@@ -30,6 +30,10 @@ def add_subject():
     while True:
         user_subject = input("Podaj nazwę przedmiotu: ").strip().lower()
 
+        if not user_subject:
+            print("Nazwa przedmiotu nie może być pusta!")
+            return
+
         if any(item["nazwa"] == user_subject for item in data["subject"]):
             print("Dany przedmiot już istnieje!")
             continue
@@ -65,8 +69,15 @@ def add_tasks():
         except ValueError:
             print("Podaj liczbę!")
 
-    user_task = input("Podaj treść zadania: ")
-
+    while True:
+        user_task = input("Podaj treść zadania: ").strip()
+        
+        if not user_task:
+            print("Treść zadania nie może byc pusta!")
+            continue
+        else:
+            break
+    
     data["subject"][user_task_id]["zadania"].append({
         "id_task": len(data["subject"][user_task_id]["zadania"]),
         "task": user_task,
@@ -84,7 +95,7 @@ def show_tasks():
         return
 
     for subject in data["subject"]:
-        print(f"ID[{subject['id']}] Przedmiot: {subject['nazwa']}")
+        print(f"\nID[{subject['id']}] Przedmiot: {subject['nazwa']}")
         for task in subject["zadania"]:
             status_symbol = "Wykonane" if task["status"] else " "
             print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
@@ -106,6 +117,10 @@ def complete_task():
 
             id_subject = get_user_int("przedmiotu, w którym chcesz ukończyć zadanie")
 
+            if not 0 <= id_subject < len(data["subject"]):
+                print("Błąd: Podaj poprawne ID!\n")
+                continue 
+
             if not data["subject"][id_subject]["zadania"]:
                 print("Pusta lista zadań")
                 return
@@ -121,6 +136,11 @@ def complete_task():
 
     while True:
         id_task = get_user_int("zadania, które wykonałeś")
+
+        if not 0 <= id_task < len(data["subject"][id_subject]['zadania']):
+            print("Błąd: Podaj poprawne ID!\n")
+            continue 
+
 
         try:
             status = data["subject"][id_subject]["zadania"][id_task]["status"]
@@ -144,6 +164,3 @@ def get_user_int(typ):
             return int(input(f"\nPodaj ID {typ}: "))
         except ValueError:
             print("Błąd!: Podaj poprawne ID!")
-
-
-
