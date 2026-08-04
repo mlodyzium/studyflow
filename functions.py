@@ -43,3 +43,34 @@ def add_subject():
         data_write(data)
         break
 
+
+def add_tasks():
+    """Funkcja, dzięki której możesz dodać dla danego przedmiotu zadanie."""
+    data = data_read()
+
+    if not data["subject"]:
+        print("Brak przedmiotów!")
+        return
+
+    for subject in data["subject"]:
+        print(f"ID[{subject['id']}] - Przedmiot: {subject['nazwa']}")
+
+    while True:
+        try:
+            user_task_id = int(input("\nPodaj ID wybranego przedmiotu: "))
+            if user_task_id not in range(len(data["subject"])):
+                print("Podaj poprawne ID przedmiotu!")
+                continue
+            break
+        except ValueError:
+            print("Podaj liczbę!")
+
+    user_task = input("Podaj treść zadania: ")
+
+    data["subject"][user_task_id]["zadania"].append({
+        "id_task": len(data["subject"][user_task_id]["zadania"]),
+        "task": user_task,
+        "status": False
+    })
+    data_write(data)
+
