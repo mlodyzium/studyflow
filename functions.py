@@ -90,3 +90,60 @@ def show_tasks():
             print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
 
 
+def complete_task():
+    """Funkcja oznaczająca zadanie jako wykonane."""
+    data = data_read()
+
+    if not data["subject"]:
+        print("Brak przedmiotów!")
+        return
+
+    id_subject = None
+    while True:
+        try:
+            for subject in data["subject"]:
+                print(f"ID[{subject['id']}] - Przedmiot: {subject['nazwa']}")
+
+            id_subject = get_user_int("przedmiotu, w którym chcesz ukończyć zadanie")
+
+            if not data["subject"][id_subject]["zadania"]:
+                print("Pusta lista zadań")
+                return
+
+            selected_subject = data["subject"][id_subject]
+            print(f"Przedmiot: {selected_subject['nazwa']}")
+            for task in selected_subject["zadania"]:
+                status_symbol = "Wykonane" if task["status"] else " "
+                print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
+            break
+        except (ValueError, IndexError):
+            print("Błąd: Podaj poprawne ID!\n")
+
+    while True:
+        id_task = get_user_int("zadania, które wykonałeś")
+
+        try:
+            status = data["subject"][id_subject]["zadania"][id_task]["status"]
+        except (ValueError, IndexError):
+            print("Błąd!: Niepoprawne ID\n")
+            continue
+
+        if status:
+            print("Zadanie już zostało wykonane!")
+        else:
+            data["subject"][id_subject]["zadania"][id_task]["status"] = True
+            data_write(data)
+            print("Zmieniono status zadania!")
+        break
+
+
+def get_user_int(typ):
+    """Pobiera od użytkownika liczbę całkowitą (ID)."""
+    while True:
+        try:
+            return int(input(f"\nPodaj ID {typ}: "))
+        except ValueError:
+            print("Błąd!: Podaj poprawne ID!")
+
+
+
