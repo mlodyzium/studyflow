@@ -15,11 +15,11 @@ Projekt został podzielony na dwa osobne pliki w celu zachowania czystości kodu
   * Przekazuje sterowanie do odpowiednich funkcji w module `functions.py`.
 
 * **`functions.py` (Logika Biznesowa i Pliki)**
-  * **Obsługa danych:** Wczytuje i zapisuje strukturę danych z/do pliku `data.json` ze wsparciem dla kodowania `UTF-8` oraz automatyczną naprawą uszkodzonych/pustych plików.
+  * **Obsługa danych:** Wczytuje i zapisuje strukturę danych z/do pliku `data.json` ze wsparciem dla kodowania `UTF-8` oraz obsługuje uszkodzony lub pusty plik.
   * **Zarządzanie przedmiotami:** Pozwala na dodawanie nowych przedmiotów i pilnuje, aby ich nazwy się nie dublowały.
   * **Zarządzanie zadaniami:** Umożliwia dodawanie zadań do konkretnych przedmiotów oraz zmianę ich stanu na wykonane.
   * **Wyświetlanie:** Formatowanie i przejrzyste renderowanie listy przedmiotów oraz zadań wraz z ich statusami (`[ ]` / `[Wykonane]`).
-  * **Walidacja walutowa i liczbowa:** Zawiera funkcję pomocniczą `get_user_int()`, która zabezpiecza program przed awarią (crashem), gdy użytkownik zamiast cyfry wpisze litery.
+  * **Walidacja liczbowa:** Zawiera funkcję pomocniczą `get_user_int()`, która zabezpiecza program przed awarią (crashem), gdy użytkownik zamiast cyfry wpisze litery.
 
 ---
 
@@ -35,3 +35,5 @@ Pobierz pliki projektu i upewnij się, że `main.py` oraz `functions.py` znajduj
 1. Otwórz Terminal / Wiersz poleceń / PowerShell i przejdź do folderu z projektem:
    ```bash
    cd sciezka/do/folderu/studyflow
+   python main.py
+   ```
