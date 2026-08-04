@@ -21,3 +21,25 @@ def data_write(data):
     """Funkcja, która nadpisuje plik DATA_FILE."""
     with open(DATA_FILE, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4)
+
+
+def add_subject():
+    """Funkcja, dzięki której możesz dodać przedmiot do studyflow."""
+    data = data_read()
+
+    while True:
+        user_subject = input("Podaj nazwę przedmiotu: ").strip().lower()
+
+        if any(item["nazwa"] == user_subject for item in data["subject"]):
+            print("Dany przedmiot już istnieje!")
+            continue
+
+        data["subject"].append({
+            "id": len(data["subject"]),
+            "nazwa": user_subject,
+            "zadania": []
+        })
+        print("Pomyślnie dodano nowy przedmiot!")
+        data_write(data)
+        break
+
