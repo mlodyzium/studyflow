@@ -74,3 +74,19 @@ def add_tasks():
     })
     data_write(data)
 
+
+def show_tasks():
+    """Funkcja wyświetlająca listę wszystkich przedmiotów i zadań."""
+    data = data_read()
+
+    if not data["subject"]:
+        print("Brak przedmiotów!")
+        return
+
+    for subject in data["subject"]:
+        print(f"ID[{subject['id']}] Przedmiot: {subject['nazwa']}")
+        for task in subject["zadania"]:
+            status_symbol = "Wykonane" if task["status"] else " "
+            print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
+
+
