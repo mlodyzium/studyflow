@@ -62,6 +62,7 @@ Jeśli chcesz uruchamiać testy jednostkowe, zainstaluj w terminalu `pytest`:
 
 ```bash
 pip install pytest
+```
 
 ### Krok 1: Pobranie kodu
 Pobierz pliki projektu i upewnij się, że `test_functions.py` oraz `functions.py` znajdują się w tym samym folderze.
@@ -69,6 +70,7 @@ Pobierz pliki projektu i upewnij się, że `test_functions.py` oraz `functions.p
 ### Krok 2: Uruchomienie w terminalu
 
 1. Otwórz Terminal / Wiersz poleceń / PowerShell i przejdź do folderu z projektem:
+   
    ```bash
    cd sciezka/do/folderu/studyflow
    py -m pytest test_functions.py
