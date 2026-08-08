@@ -1,4 +1,4 @@
-import functions
+from functions import Subject, Task
 
 MENU = """
 ========================================
@@ -14,17 +14,21 @@ MENU = """
 
 
 def main():
+
+    subject = Subject()
+    task = Task()
+
     while True:
         wybor = input("\nWybierz opcję > ").lower().strip().replace(" ", "")
 
         if wybor == 'dodajprzedmiot':
-            functions.add_subject()
+           subject.add()
         elif wybor == 'pokaz':
-            functions.show_tasks()
+            task.show()
         elif wybor == 'dodajzadanie':
-            functions.add_tasks()
+            task.add()
         elif wybor == 'wykonano':
-            functions.complete_task()
+            task.complete()
         elif wybor == 'wyjdz':
             print("\nMiłej nauki! Do zobaczenia!")
             break
