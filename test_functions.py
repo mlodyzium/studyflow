@@ -181,7 +181,114 @@ class TestTaskAdd:
         assert "nie może byc pusta" in captured.out
         assert data["subject"][0]["zadania"][0]["task"] == "Przeczytać rozdział 3"
 
+    def test_add_task_negative_id_then_valid(self, monkeypatch, capsys):
+        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
+        # "-1" -> nie powinno wskazywać na ostatni element listy (poza zakresem), "0" -> OK
+        fake_input(monkeypatch, ["-1", "0", "Nauka na kolokwium"])
 
+        task = Task()
+        task.add()
+
+        captured = capsys.readouterr()
+        data = Data().read()
+
+        # -1 nie może zostać zaakceptowane jako poprawne ID
+        assert "Podaj poprawne ID przedmiotu!" in captured.out
+
+        # zadanie powinno trafić do przedmiotu o id=0, a nie zniknąć/trafić gdzie indziej
+        assert len(data["subject"][0]["zadania"]) == 1
+        assert data["subject"][0]["zadania"][0]["task"] == "Nauka na kolokwium"
+
+    def test_add_task_negative_id_does_not_target_last_subject(self, monkeypatch, capsys):
+        Data().write({
+            "subject": [
+                {"id": 0, "nazwa": "matematyka", "zadania": []},
+                {"id": 1, "nazwa": "fizyka", "zadania": []},
+            ]
+        })
+        # -1 mogłoby (błędnie) wskazywać na "fizyka" (ostatni element listy), jeśli walidacja by zawiodła
+        fake_input(monkeypatch, ["-1", "1", "Powtorka wzorow"])
+
+        task = Task()
+        task.add()
+
+        captured = capsys.readouterr()
+        data = Data().read()
+
+        assert "Podaj poprawne ID przedmiotu!" in captured.out
+        # zadanie trafiło tam, gdzie faktycznie chcieliśmy (id=1), a nie przez przypadek przez -1
+        assert len(data["subject"][1]["zadania"]) == 1
+        assert len(data["subject"][0]["zadania"]) == 0
+
+    def test_complete_negative_subject_id_then_valid(self, monkeypatch, capsys):
+        Data().write({
+            "subject": [
+                {"id": 0, "nazwa": "matematyka", "zadania": [
+                    {"id_task": 0, "task": "Zadanie 1", "status": False}
+                ]},
+            ]
+        })
+        # "-1" -> poza zakresem, "0" -> OK, potem id_task = "0"
+        fake_input(monkeypatch, ["-1", "0", "0"])
+
+        task = Task()
+        task.complete()
+
+        captured = capsys.readouterr()
+        data = Data().read()
+
+        assert "Błąd: Podaj poprawne ID!" in captured.out
+        assert data["subject"][0]["zadania"][0]["status"] is True
+
+
+    def test_complete_negative_subject_id_does_not_target_last_subject(self, monkeypatch, capsys):
+        Data().write({
+            "subject": [
+                {"id": 0, "nazwa": "matematyka", "zadania": [
+                    {"id_task": 0, "task": "Zadanie 1", "status": False}
+                ]},
+                {"id": 1, "nazwa": "fizyka", "zadania": [
+                    {"id_task": 0, "task": "Zadanie 2", "status": False}
+                ]},
+            ]
+        })
+        # -1 mogłoby (błędnie) wskazywać na "fizyka" (ostatni przedmiot), gdyby walidacja zawiodła
+        fake_input(monkeypatch, ["-1", "1", "0"])
+
+        task = Task()
+        task.complete()
+
+        captured = capsys.readouterr()
+        data = Data().read()
+
+        assert "Błąd: Podaj poprawne ID!" in captured.out
+        # zmienione zostało zadanie w przedmiocie o id=1, a nie przypadkiem gdzie indziej
+        assert data["subject"][1]["zadania"][0]["status"] is True
+        assert data["subject"][0]["zadania"][0]["status"] is False
+
+
+    def test_complete_negative_task_id_then_valid(self, monkeypatch, capsys):
+        Data().write({
+            "subject": [
+                {"id": 0, "nazwa": "matematyka", "zadania": [
+                    {"id_task": 0, "task": "Zadanie 1", "status": False},
+                    {"id_task": 1, "task": "Zadanie 2", "status": False},
+                ]},
+            ]
+        })
+        # id_subject = "0" (OK), potem id_task: "-1" -> poza zakresem, "1" -> OK
+        fake_input(monkeypatch, ["0", "-1", "1"])
+
+        task = Task()
+        task.complete()
+
+        captured = capsys.readouterr()
+        data = Data().read()
+
+        assert "Błąd: Podaj poprawne ID!" in captured.out
+        # -1 nie mogło (błędnie) oznaczyć ostatniego zadania na liście (id_task=1) zamiast dopiero po walidacji
+        assert data["subject"][0]["zadania"][1]["status"] is True
+        assert data["subject"][0]["zadania"][0]["status"] is False
 # ---------------------------------------------------------------------------
 # Task.show
 # ---------------------------------------------------------------------------
