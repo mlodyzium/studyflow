@@ -9,7 +9,8 @@ class Data:
 
     def read(self):
         """Funkcja, która wczytuje dane JSON z podanego DATA_FILE."""
-        if not os.path.exists(self.DATA_FILE) or os.path.getsize(self.DATA_FILE) == 0:
+        if (not os.path.exists(self.DATA_FILE)
+                or os.path.getsize(self.DATA_FILE) == 0):
             return {"subject": []}
 
         with open(self.DATA_FILE, "r", encoding="utf-8") as file:
@@ -31,6 +32,7 @@ class BaseManager:
     dostaje gotowy dostęp do wczytywania i zapisywania danych,
     bez potrzeby tworzenia Data() ręcznie w każdej metodzie.
     """
+
     def __init__(self):
         self.data_manager = Data()
 
@@ -82,12 +84,14 @@ class Task(BaseManager):
         while True:
             try:
                 user_task_id = int(input("\nPodaj ID wybranego przedmiotu: "))
-                if user_task_id not in range(len(data["subject"])):
-                    print("Podaj poprawne ID przedmiotu!")
-                    continue
-                break
             except ValueError:
                 print("Podaj liczbę!")
+                continue
+
+            if user_task_id not in range(len(data["subject"])):
+                print("Podaj poprawne ID przedmiotu!")
+                continue
+            break
 
         while True:
             user_task = input("Podaj treść zadania: ").strip()
@@ -95,9 +99,9 @@ class Task(BaseManager):
             if not user_task:
                 print("Treść zadania nie może byc pusta!")
                 continue
-            else:
-                print("Dodano zadanie pomyślnie!")
-                break
+
+            print("Dodano zadanie pomyślnie!")
+            break
 
         data["subject"][user_task_id]["zadania"].append({
             "id_task": len(data["subject"][user_task_id]["zadania"]),
@@ -118,7 +122,8 @@ class Task(BaseManager):
             print(f"\nID[{subject['id']}] Przedmiot: {subject['nazwa']}")
             for task in subject["zadania"]:
                 status_symbol = "Wykonane" if task["status"] else " "
-                print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
+                print(f"  [{status_symbol}] ID {task['id_task']}: "
+                      f"{task['task']}")
 
     def complete(self):
         """Funkcja oznaczająca zadanie jako wykonane."""
@@ -129,43 +134,38 @@ class Task(BaseManager):
             print("Brak przedmiotów!")
             return
 
-        id_subject = None
         while True:
-            try:
-                for subject in data["subject"]:
-                    print(f"ID[{subject['id']}] - Przedmiot: {subject['nazwa']}")
+            for subject in data["subject"]:
+                print(f"ID[{subject['id']}] - Przedmiot: {subject['nazwa']}")
 
-                id_subject = extras.get_user_int("przedmiotu, w którym chcesz ukończyć zadanie")
+            id_subject = extras.get_user_int(
+                "przedmiotu, w którym chcesz ukończyć zadanie"
+            )
 
-                if not 0 <= id_subject < len(data["subject"]):
-                    print("Błąd: Podaj poprawne ID!\n")
-                    continue
-
-                if not data["subject"][id_subject]["zadania"]:
-                    print("Pusta lista zadań")
-                    return
-
-                selected_subject = data["subject"][id_subject]
-                print(f"Przedmiot: {selected_subject['nazwa']}")
-                for task in selected_subject["zadania"]:
-                    status_symbol = "Wykonane" if task["status"] else " "
-                    print(f"  [{status_symbol}] ID {task['id_task']}: {task['task']}")
-                break
-            except (ValueError, IndexError):
+            if not 0 <= id_subject < len(data["subject"]):
                 print("Błąd: Podaj poprawne ID!\n")
+                continue
+
+            if not data["subject"][id_subject]["zadania"]:
+                print("Pusta lista zadań")
+                return
+
+            selected_subject = data["subject"][id_subject]
+            print(f"Przedmiot: {selected_subject['nazwa']}")
+            for task in selected_subject["zadania"]:
+                status_symbol = "Wykonane" if task["status"] else " "
+                print(f"  [{status_symbol}] ID {task['id_task']}: "
+                      f"{task['task']}")
+            break
 
         while True:
             id_task = extras.get_user_int("zadania, które wykonałeś")
 
-            if not 0 <= id_task < len(data["subject"][id_subject]['zadania']):
+            if not 0 <= id_task < len(data["subject"][id_subject]["zadania"]):
                 print("Błąd: Podaj poprawne ID!\n")
                 continue
 
-            try:
-                status = data["subject"][id_subject]["zadania"][id_task]["status"]
-            except (ValueError, IndexError):
-                print("Błąd!: Niepoprawne ID\n")
-                continue
+            status = data["subject"][id_subject]["zadania"][id_task]["status"]
 
             if status:
                 print("Zadanie już zostało wykonane!")
