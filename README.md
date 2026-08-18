@@ -1,79 +1,390 @@
-# StudyFlow 🎓
+# 📚 StudyFlow
 
-**StudyFlow** to lekka, modularna aplikacja konsolowa napisana w języku Python, służąca do organizacji nauki poprzez zarządzanie przedmiotami i przypisanymi do nich zadaniami. Aplikacja opiera się na architekturze zorientowanej obiektowo (OOP) z automatycznym zapisem stanu do pliku JSON (`data.json`) oraz wsparciem dla testów jednostkowych (`pytest`).
+StudyFlow to konsolowa aplikacja napisana w Pythonie, której celem jest ułatwienie organizacji nauki. Aplikacja pozwala użytkownikowi zarządzać przedmiotami, tematami i zadaniami, rejestrować sesje nauki oraz zapisywać wyniki egzaminów.
 
----
-
-## 🏗️ Architektura i opis klas
-
-Projekt został podzielony na odrębne pliki zgodnie z zasadą podziału odpowiedzialności (Separation of Concerns):
-
-* **`main.py` (Interfejs i Nawigacja)**
-  * Odpowiada za pętlę główną aplikacji, menu tekstowe oraz interakcję z użytkownikiem.
-  * Korzysta z obiektów klas `Subject` oraz `Task` z modułu `functions.py`.
-  * Normalizuje wprowadzane komendy (usuwanie spacji, zmiana na małe litery).
-
-* **`functions.py` (Logika Biznesowa i Klasy Obiektowe)**
-  * **`Data`**: Zarządza odczytem i zapisem danych do pliku `data.json` (wsparcie dla UTF-8, obsługa pustego lub uszkodzonego pliku JSON).
-  * **`BaseManager`**: Klasa bazowa dostarczająca wspólny interfejs do operacji wczytywania (`load`) i zapisywania (`save`) danych dla dziedziczących klas.
-  * **`Subject`** *(dziedziczy po `BaseManager`)*: Obsługuje dodawanie nowych przedmiotów oraz uniemożliwia tworzenie duplikatów.
-  * **`Task`** *(dziedziczy po `BaseManager`)*: Zarządza zadaniami przypisanymi do przedmiotów – dodawanie zadań, ich wyświetlanie oraz oznaczanie jako wykonane.
-  * **`Extras`**: Klasa z metodami pomocniczymi (np. `get_user_int`), zapewniająca walidację wejścia i odporność na błędy typu `ValueError`.
-
-* **`test_functions.py` (Testy Jednostkowe)**
-  * Zbiór zestawów testów napisanych przy użyciu frameworka `pytest`.
-  * Pokrywa przypadki testowe dla klas `Data`, `Extras`, `Subject` oraz `Task`.
-  * Wykorzystuje fixtures (`tmp_path`, `monkeypatch`) do izolacji środowiska testowego (operacje na plikach oraz symulacja wejścia `input()`).
+Projekt wykorzystuje **Python, SQLAlchemy oraz PostgreSQL**. Dane są przypisywane do konkretnych użytkowników, a dostęp do aplikacji zabezpiecza system rejestracji i logowania z hasłami przechowywanymi w postaci bezpiecznych hashy.
 
 ---
 
-## 📋 Lista Dostępnych Komend
+## ✨ Funkcje
 
-| Komenda | Opis |
-| :--- | :--- |
-| `dodajprzedmiot` | Tworzy nowy przedmiot w systemie. |
-| `dodajzadanie` | Dodaje zadanie do istniejącego przedmiotu na podstawie podanego ID. |
-| `pokaz` | Wyświetla pełną listę przedmiotów wraz z zadaniami i ich statusami. |
-| `wykonano` | Oznacza wskazane zadanie jako ukończone (`[Wykonane]`). |
-| `wyjdz` | Zamyka program. |
+### 🔐 Autoryzacja
+
+* rejestracja nowych użytkowników,
+* logowanie,
+* walidacja danych logowania,
+* hasła przechowywane jako hash przy użyciu `bcrypt`,
+* oddzielne dane dla każdego użytkownika.
+
+### 📚 Przedmioty
+
+Dla każdego przedmiotu można:
+
+* dodać nowy przedmiot,
+* określić datę egzaminu,
+* wyświetlić przedmioty,
+* edytować dane,
+* usunąć przedmiot.
+
+Usunięcie przedmiotu usuwa również powiązane z nim dane.
+
+### 📖 Tematy
+
+Każdy przedmiot może posiadać wiele tematów.
+
+Dla tematów dostępne są:
+
+* dodawanie,
+* wyświetlanie,
+* edycja,
+* usuwanie,
+* określenie poziomu trudności:
+
+  * `EASY`,
+  * `MEDIUM`,
+  * `HARD`,
+* oznaczenie tematu jako opanowanego.
+
+### ✅ Zadania
+
+Zadania są przypisywane do konkretnych tematów.
+
+Dostępne informacje:
+
+* treść zadania,
+* termin wykonania,
+* priorytet:
+
+  * `LOW`,
+  * `MEDIUM`,
+  * `HIGH`,
+* status wykonania.
+
+Dostępne operacje:
+
+* dodawanie,
+* wyświetlanie,
+* edycja,
+* usuwanie,
+* oznaczanie jako wykonane.
+
+Podczas dodawania zadania można również utworzyć nowy temat, jeśli nie istnieje jeszcze odpowiedni temat.
+
+### ⏱️ Sesje nauki
+
+StudyFlow umożliwia rejestrowanie czasu poświęconego na naukę.
+
+Każda sesja może zawierać:
+
+* przedmiot,
+* datę i godzinę rozpoczęcia,
+* czas trwania w minutach,
+* opcjonalne notatki.
+
+Sesje można:
+
+* dodawać,
+* wyświetlać,
+* edytować,
+* usuwać.
+
+### 📝 Wyniki egzaminów
+
+Dla każdego przedmiotu można zapisywać wyniki egzaminów.
+
+Każdy wynik zawiera:
+
+* datę egzaminu,
+* wynik procentowy.
+
+Wynik jest walidowany w zakresie `0–100%`.
 
 ---
 
-## 🚀 Jak uruchomić program?
+## 🏗️ Struktura projektu
 
-Do uruchomienia aplikacji wymagane jest wyłącznie zainstalowane środowisko **Python w wersji 3.8+**. Aplikacja korzysta z bibliotek standardowych (`json`, `os`).
-
-### Krok 1: Pobranie kodu
-Pobierz pliki projektu i upewnij się, że `main.py` oraz `functions.py` znajdują się w tym samym folderze.
-
-### Krok 2: Uruchomienie w terminalu
-
-1. Otwórz Terminal / Wiersz poleceń / PowerShell i przejdź do folderu z projektem:
-   ```bash
-   cd sciezka/do/folderu/studyflow
-   python main.py
-   ```
-
----
-
-## 🛠️ Testy jednostkowe
-
-Jeśli chcesz uruchamiać testy jednostkowe, zainstaluj w terminalu `pytest`:
-
-```bash
-pip install pytest
+```text
+studyflow/
+│
+├── data/
+│   ├── auth.py
+│   ├── database.py
+│   └── models.py
+│
+├── functions.py
+├── init_db.py
+├── main.py
+├── test_functions.py
+├── .gitignore
+└── README.md
 ```
 
-### Krok 1: Pobranie kodu
-Pobierz pliki projektu i upewnij się, że `test_functions.py` oraz `functions.py` znajdują się w tym samym folderze.
+### `main.py`
 
-### Krok 2: Uruchomienie w terminalu
+Odpowiada za interfejs konsolowy oraz nawigację po aplikacji.
 
-1. Otwórz Terminal / Wiersz poleceń / PowerShell i przejdź do folderu z projektem:
-   
-   ```bash
-   cd sciezka/do/folderu/studyflow
-   py -m pytest test_functions.py
-   ```
+Zawiera:
 
+* menu autoryzacji,
+* menu główne,
+* wspólne podmenu CRUD,
+* obsługę przedmiotów,
+* obsługę tematów,
+* obsługę zadań,
+* obsługę sesji nauki,
+* obsługę wyników egzaminów.
 
+### `functions.py`
+
+Zawiera główną logikę aplikacji.
+
+Najważniejsze klasy:
+
+* `Auth` — rejestracja i logowanie,
+* `SubjectService` — zarządzanie przedmiotami,
+* `TopicService` — zarządzanie tematami,
+* `TaskService` — zarządzanie zadaniami,
+* `StudySessionService` — zarządzanie sesjami nauki,
+* `ExamResultService` — zarządzanie wynikami egzaminów.
+
+Znajdują się tutaj również funkcje pomocnicze odpowiedzialne za walidację danych wejściowych.
+
+### `data/models.py`
+
+Zawiera modele SQLAlchemy reprezentujące strukturę bazy danych:
+
+* `User`,
+* `Subject`,
+* `Topic`,
+* `Task`,
+* `StudySession`,
+* `ExamResult`,
+* `Priority`.
+
+Relacje pomiędzy modelami wykorzystują klucze obce oraz mechanizm `cascade`, dzięki czemu usunięcie nadrzędnego obiektu może automatycznie usunąć powiązane dane.
+
+### `data/database.py`
+
+Odpowiada za:
+
+* konfigurację połączenia z PostgreSQL,
+* utworzenie silnika SQLAlchemy,
+* utworzenie `SessionLocal`,
+* bazową klasę modeli `Base`.
+
+Konfiguracja bazy danych jest pobierana ze zmiennych środowiskowych.
+
+### `data/auth.py`
+
+Zawiera funkcje:
+
+* `hash_password()` — tworzenie hashy haseł,
+* `verify_password()` — weryfikacja hasła.
+
+Do obsługi haseł wykorzystywany jest `bcrypt`.
+
+### `init_db.py`
+
+Odpowiada za inicjalizację bazy danych.
+
+Przed utworzeniem tabel sprawdza, czy wymagane tabele już istnieją. Jeśli nie, tworzy brakujące tabele na podstawie modeli SQLAlchemy.
+
+---
+
+## 🗄️ Baza danych
+
+Projekt korzysta z **PostgreSQL**.
+
+Schemat danych można uprościć do następującej struktury:
+
+```text
+User
+ │
+ └── Subject
+      │
+      ├── Topic
+      │    │
+      │    └── Task
+      │
+      ├── StudySession
+      │
+      └── ExamResult
+```
+
+Każdy użytkownik posiada własne przedmioty, a dane powiązane z przedmiotami są przechowywane w relacjach zależnych.
+
+---
+
+## ⚙️ Wymagania
+
+Do uruchomienia projektu potrzebne są:
+
+* Python 3.8+
+* PostgreSQL
+* pip
+
+Wymagane biblioteki Python:
+
+```text
+sqlalchemy
+psycopg2
+python-dotenv
+bcrypt
+pytest
+```
+
+---
+
+## 🔧 Konfiguracja
+
+Przed uruchomieniem aplikacji należy utworzyć plik `.env` w głównym katalogu projektu.
+
+Przykładowa konfiguracja:
+
+```env
+DB_USER=postgres
+DB_PASSWORD=twoje_haslo
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=studyflow
+```
+
+Następnie należy utworzyć bazę danych PostgreSQL o nazwie odpowiadającej `DB_NAME`.
+
+---
+
+## 🚀 Uruchomienie
+
+### 1. Pobranie repozytorium
+
+```bash
+git clone https://github.com/mlodyzium/studyflow.git
+cd studyflow
+```
+
+### 2. Instalacja zależności
+
+```bash
+pip install sqlalchemy psycopg2-binary python-dotenv bcrypt pytest
+```
+
+### 3. Konfiguracja `.env`
+
+Utwórz plik `.env` i uzupełnij dane dostępowe do PostgreSQL.
+
+### 4. Inicjalizacja bazy
+
+Można uruchomić:
+
+```bash
+python init_db.py
+```
+
+Program sprawdzi, czy wymagane tabele istnieją i utworzy je w razie potrzeby.
+
+### 5. Uruchomienie aplikacji
+
+```bash
+python main.py
+```
+
+Po uruchomieniu pojawi się menu logowania:
+
+```text
+[1] Zaloguj się
+[2] Zarejestruj się
+[3] Wyjdź
+```
+
+---
+
+## 🧪 Testy
+
+Testy można uruchomić za pomocą:
+
+```bash
+pytest
+```
+
+lub:
+
+```bash
+python -m pytest
+```
+
+### ⚠️ Aktualny stan testów
+
+Plik `test_functions.py` pochodzi jeszcze z wcześniejszej wersji aplikacji, która korzystała z klas `Data`, `Subject` i `Task`.
+
+Aktualna wersja aplikacji została przebudowana i korzysta z:
+
+* PostgreSQL,
+* SQLAlchemy,
+* `SubjectService`,
+* `TopicService`,
+* `TaskService`,
+* `StudySessionService`,
+* `ExamResultService`.
+
+Dlatego testy wymagają dostosowania do aktualnej architektury projektu.
+
+---
+
+## 🧭 Główne menu
+
+Po zalogowaniu użytkownik otrzymuje dostęp do:
+
+```text
+[przedmioty] - Zarządzaj przedmiotami
+[tematy]     - Zarządzaj tematami
+[zadania]    - Zarządzaj zadaniami
+[sesje]      - Sesje nauki
+[egzaminy]   - Wyniki egzaminów
+[wyloguj]    - Wyloguj się
+```
+
+Dla większości modułów dostępne są operacje:
+
+```text
+[dodaj]
+[edytuj]
+[usun]
+[pokaz]
+[wroc]
+```
+
+---
+
+## 🛠️ Technologie
+
+Projekt wykorzystuje:
+
+* **Python** — główny język programowania,
+* **SQLAlchemy** — ORM i obsługa modeli bazy danych,
+* **PostgreSQL** — baza danych,
+* **psycopg2** — połączenie Pythona z PostgreSQL,
+* **python-dotenv** — obsługa zmiennych środowiskowych,
+* **bcrypt** — bezpieczne haszowanie haseł,
+* **pytest** — testy jednostkowe.
+
+---
+
+## 🔒 Bezpieczeństwo
+
+Dane dostępowe do bazy danych nie są przechowywane bezpośrednio w kodzie.
+
+Konfiguracja znajduje się w pliku `.env`, który jest dodany do `.gitignore`.
+
+Hasła użytkowników nie są zapisywane w bazie w postaci jawnego tekstu — przed zapisaniem są haszowane przy użyciu `bcrypt`.
+
+---
+
+## 🚧 Planowany rozwój
+
+Możliwe dalsze rozszerzenia projektu:
+
+* aktualizacja testów do nowej architektury,
+* rozbudowanie obsługi błędów połączenia z bazą,
+* graficzny interfejs użytkownika.
+
+##
