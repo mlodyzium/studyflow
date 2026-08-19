@@ -1,10 +1,13 @@
 """Testy aktualnej warstwy SQLAlchemy."""
 import os
 from datetime import date
+
 import pytest
+
 import functions
-from functions import Auth, ask_choice, ask_date, ask_float, ask_int
 from data.auth import hash_password, verify_password
+from functions import Auth, ask_choice, ask_date, ask_float, ask_int
+
 
 def fake_input(monkeypatch, values):
     values = iter(values)
