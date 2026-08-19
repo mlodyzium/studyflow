@@ -300,33 +300,32 @@ Po uruchomieniu pojawi się menu logowania:
 
 ## 🧪 Testy
 
-Testy można uruchomić za pomocą:
+Testy obejmują walidatory danych wejściowych, hashowanie i weryfikację haseł,
+logowanie i rejestrację oraz kluczowe operacje zapisu danych w PostgreSQL.
+
+Do uruchomienia testów integracyjnych potrzebna jest działająca testowa baza
+PostgreSQL. Utwórz ją na przykład tak:
 
 ```bash
-pytest
+createdb -h localhost -U postgres studyflow_test
 ```
 
-lub:
+Następnie ustaw adres testowej bazy i uruchom pytest:
 
 ```bash
-python -m pytest
+export TEST_DATABASE_URL="postgresql+psycopg2://postgres:TWOJE_HASLO@localhost:5432/studyflow_test"
+python3 -m pytest -q
 ```
 
-### ⚠️ Aktualny stan testów
+Testy tworzą wymagane tabele na początku działania, a po zakończeniu usuwają
+je z testowej bazy. Ostatni zweryfikowany wynik:
 
-Plik `test_functions.py` pochodzi jeszcze z wcześniejszej wersji aplikacji, która korzystała z klas `Data`, `Subject` i `Task`.
+```text
+10 passed, 6 warnings in 1.23s
+```
 
-Aktualna wersja aplikacji została przebudowana i korzysta z:
-
-* PostgreSQL,
-* SQLAlchemy,
-* `SubjectService`,
-* `TopicService`,
-* `TaskService`,
-* `StudySessionService`,
-* `ExamResultService`.
-
-Dlatego testy wymagają dostosowania do aktualnej architektury projektu.
+Ostrzeżenia dotyczą użycia `datetime.utcnow()` w SQLAlchemy i nie powodują
+niepowodzenia testów.
 
 ---
 

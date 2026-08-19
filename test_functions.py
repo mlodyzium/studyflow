@@ -67,24 +67,24 @@ def test_sqlalchemy_postgres_persists_relationship(database_session):
 @pytest.fixture
 def app_session(database_session, monkeypatch):
     session, user, subject = database_session
+    user_uid = user.user_uid
     monkeypatch.setattr(functions, "SessionLocal", lambda: session)
-    return session, user, subject
+    return session, user_uid, subject
 
 def test_subject_service_add(app_session, monkeypatch):
-    session, user, _ = app_session
+    session, user_uid, _ = app_session
     fake_input(monkeypatch, ["fizyka", ""])
-    functions.SubjectService(user.user_uid).add()
-    names = {s.nazwa for s in functions.SubjectService(user.user_uid)._get_all(session)}
+    functions.SubjectService(user_uid).add()
+    names = {s.nazwa for s in functions.SubjectService(user_uid)._get_all(session)}
     assert names == {"fizyka", "matematyka"}
 
 def test_topic_and_task_persist(app_session, monkeypatch):
-    session, user, _ = app_session
-    fake_input(monkeypatch, ["algebra", "HARD"])
-    functions.TopicService(user.user_uid).add()
-    topic = session.query(functions.TopicModel).one()
+    session, user_uid, _ = app_session
+    fake_input(monkeypatch, ["matematyka", "algebra", "HARD"])
+    functions.TopicService(user_uid).add()
     fake_input(monkeypatch, ["matematyka", "algebra", "zadanie", "", "HIGH"])
-    functions.TaskService(user.user_uid).add()
-    session.refresh(topic)
+    functions.TaskService(user_uid).add()
+    topic = session.query(functions.TopicModel).one()
     assert topic.tasks[0].title == "zadanie"
     assert topic.tasks[0].priority.value == "HIGH"
 
