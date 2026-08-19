@@ -114,6 +114,7 @@ studyflow/
 ├── functions.py
 ├── init_db.py
 ├── main.py
+├── requirements.txt
 ├── test_functions.py
 ├── .gitignore
 └── README.md
@@ -265,7 +266,7 @@ cd studyflow
 ### 2. Instalacja zależności
 
 ```bash
-pip install sqlalchemy psycopg2-binary python-dotenv bcrypt pytest
+python3 -m pip install -r requirements.txt
 ```
 
 ### 3. Konfiguracja `.env`
