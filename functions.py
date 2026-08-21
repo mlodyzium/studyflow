@@ -397,6 +397,13 @@ class TaskService:
             .all()
         )
 
+    def _title_exists(self, session, topic, title, exclude_task=None):
+        normalized_title = title.strip().lower()
+        return any(
+            task is not exclude_task and task.title.strip().lower() == normalized_title
+            for task in self._get_all(session, topic)
+        )
+
     def _select_task(self, session, topic, prompt="Podaj treść zadania"):
         tasks = self._get_all(session, topic)
         if not tasks:
@@ -464,6 +471,9 @@ class TaskService:
             if not title:
                 print("Treść nie może być pusta!")
                 continue
+            if self._title_exists(session, topic, title):
+                print("Zadanie o takiej treści już istnieje w tym temacie!")
+                continue
             break
 
         deadline_date = ask_date("Termin wykonania")
@@ -493,7 +503,11 @@ class TaskService:
             session.close()
             return
 
-        nowa_tresc = input(f"Nowa treść (enter aby zostawić '{task.title}'): ").strip()
+        while True:
+            nowa_tresc = input(f"Nowa treść (enter aby zostawić '{task.title}'): ").strip()
+            if not nowa_tresc or not self._title_exists(session, topic, nowa_tresc, task):
+                break
+            print("Zadanie o takiej treści już istnieje w tym temacie!")
         if nowa_tresc:
             task.title = nowa_tresc
 

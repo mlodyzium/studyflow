@@ -88,6 +88,19 @@ def test_topic_and_task_persist(app_session, monkeypatch):
     assert topic.tasks[0].title == "zadanie"
     assert topic.tasks[0].priority.value == "HIGH"
 
+def test_task_title_must_be_unique_within_topic(app_session, monkeypatch):
+    session, user_uid, subject = app_session
+    from data.models import Topic, Task
+    topic = Topic(nazwa="algebra", subject_uid=subject.subject_uid)
+    session.add(topic); session.commit()
+    session.add(Task(title="Powtórz wzory", topic_uid=topic.topic_uid)); session.commit()
+
+    fake_input(monkeypatch, ["matematyka", "algebra", "powtórz wzory", "Powtórz geometrię", "", "HIGH"])
+    functions.TaskService(user_uid).add()
+
+    titles = [task.title for task in session.query(Task).filter_by(topic_uid=topic.topic_uid).all()]
+    assert titles == ["Powtórz wzory", "Powtórz geometrię"]
+
 def test_auth_register_and_login(app_session, monkeypatch):
     _, _, _ = app_session
     monkeypatch.setattr("builtins.input", lambda *_a, **_k: "jan")
