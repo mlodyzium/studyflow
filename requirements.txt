@@ -1,0 +1,5 @@
+SQLAlchemy
+psycopg2-binary
+python-dotenv
+bcrypt
+pytest
