@@ -661,7 +661,7 @@ class StudySessionService:
             return
 
         target = sessions[numer - 1]
-        nowy_czas = ask_int("Nowy czas trwania (minuty)")
+        nowy_czas = ask_int("Nowy czas trwania (minuty)", min_value=1)
         if nowy_czas is not None:
             target.duration_minutes = nowy_czas
 
