@@ -35,7 +35,10 @@ class TestAuth:
         assert not verify_password("bledne", hashed)
 
 
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+
+if not TEST_DATABASE_URL:  
+    pytest.skip("Ustaw TEST_DATABASE_URL na osobną bazę testową PostgreSQL")  
 
 @pytest.fixture
 def database_session():
