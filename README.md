@@ -135,6 +135,11 @@ należy dodawać wyłącznie `.env.example` bez prawdziwego hasła.
 
 ## Docker Compose
 
+Frontend znajduje się w katalogu `frontend/` i jest zbudowany w React,
+TypeScript oraz Vite. W Compose jego produkcyjny build jest serwowany przez
+Nginx, który przekazuje zapytania spod `/api` do FastAPI. Dzięki temu przeglądarka
+korzysta z jednego adresu i nie wymaga dodatkowej konfiguracji CORS.
+
 Projekt można uruchomić razem z PostgreSQL w kontenerach. Wymagany jest Docker
 Desktop z obsługą polecenia `docker compose`.
 
@@ -150,14 +155,16 @@ Następnie zbuduj i uruchom cały zestaw:
 docker compose up --build
 ```
 
-Compose uruchamia dwie usługi:
+Compose uruchamia trzy usługi:
 
 - `db` — PostgreSQL z trwałym wolumenem `postgres_data`,
-- `api` — FastAPI uruchamiane przez Uvicorn.
+- `api` — FastAPI uruchamiane przez Uvicorn,
+- `frontend` — aplikację React serwowaną przez Nginx.
 
 Kontener API czeka na prawidłowy healthcheck PostgreSQL, wykonuje
 `alembic upgrade head`, a następnie uruchamia serwer. Domyślne adresy:
 
+- aplikacja webowa: `http://localhost:5173`,
 - Swagger: `http://localhost:8000/docs`,
 - healthcheck API: `http://localhost:8000/health`,
 - PostgreSQL z hosta: `localhost:5433`.
@@ -167,6 +174,7 @@ Porty można zmienić w `.env`:
 ```env
 API_PORT=8000
 POSTGRES_PORT=5433
+FRONTEND_PORT=5173
 ```
 
 Poziom logowania aplikacji można ustawić przez:

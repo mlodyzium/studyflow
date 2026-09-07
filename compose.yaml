@@ -44,6 +44,17 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   db-test:
     image: postgres:17-alpine
     profiles: ["test"]
