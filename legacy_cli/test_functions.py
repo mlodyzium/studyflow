@@ -1,352 +1,119 @@
-import json
+"""Testy aktualnej warstwy SQLAlchemy."""
+import os
+from datetime import date
 
 import pytest
 
-from legacy_cli.functions import Data, Extras, Subject, Task
-
-# ---------------------------------------------------------------------------
-# FIXTURES / HELPERY
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True)
-def isolate_cwd(tmp_path, monkeypatch):
-    """
-    Uruchamia KAŻDY test w świeżym, tymczasowym folderze roboczym.
-    Subject/Task/Extras tworzą wewnętrznie Data() z domyślną, względną
-    ścieżką "data.json" - dzięki chdir() ten plik zawsze powstaje
-    w tmp_path, a nie w prawdziwym projekcie.
-    autouse=True => nie trzeba tej fixture wpisywać w każdym teście ręcznie.
-    """
-    monkeypatch.chdir(tmp_path)
+from legacy_cli import functions
+from data.auth import hash_password, verify_password
+from legacy_cli.functions import Auth, ask_choice, ask_date, ask_float, ask_int
 
 
 def fake_input(monkeypatch, values):
-    """
-    Podmienia wbudowaną funkcję input() tak, żeby przy kolejnych wywołaniach
-    zwracała kolejne elementy z listy `values`, zamiast czekać na klawiaturę.
-    """
-    it = iter(values)
-    monkeypatch.setattr("builtins.input", lambda *args, **kwargs: next(it))
-
-
-# ---------------------------------------------------------------------------
-# Data
-# ---------------------------------------------------------------------------
-
-class TestData:
-
-    def test_read_when_file_missing(self):
-        d = Data()
-        assert d.read() == {"subject": []}
-
-    def test_read_when_file_empty(self, tmp_path):
-        (tmp_path / "data.json").write_text("")
-        d = Data()
-        assert d.read() == {"subject": []}
-
-    def test_read_when_file_corrupted(self, tmp_path, capsys):
-        (tmp_path / "data.json").write_text("{to nie jest poprawny json")
-        d = Data()
-        result = d.read()
-        captured = capsys.readouterr()
-        assert result == {"subject": []}
-        assert "USZKODZONY" in captured.out
-
-    def test_write_then_read_roundtrip(self):
-        d = Data()
-        sample = {"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]}
-        d.write(sample)
-        assert d.read() == sample
-
-    def test_write_creates_valid_json_file(self, tmp_path):
-        d = Data()
-        d.write({"subject": []})
-        with open(tmp_path / "data.json", "r", encoding="utf-8") as f:
-            content = json.load(f)
-        assert content == {"subject": []}
-
-
-# ---------------------------------------------------------------------------
-# Extras
-# ---------------------------------------------------------------------------
-
-class TestExtras:
-
-    def test_get_user_int_valid_input(self, monkeypatch):
-        fake_input(monkeypatch, ["3"])
-        extras = Extras()
-        assert extras.get_user_int("testu") == 3
-
-    def test_get_user_int_retries_on_invalid_input(self, monkeypatch, capsys):
-        # "abc" i "" to nie liczby -> ValueError -> pętla próbuje dalej
-        fake_input(monkeypatch, ["abc", "", "7"])
-        extras = Extras()
-        result = extras.get_user_int("testu")
-        captured = capsys.readouterr()
-        assert result == 7
-        assert captured.out.count("Podaj poprawne ID!") == 2
-
-
-# ---------------------------------------------------------------------------
-# Subject
-# ---------------------------------------------------------------------------
-
-class TestSubjectAdd:
-
-    def test_add_new_subject(self, monkeypatch):
-        fake_input(monkeypatch, ["Matematyka"])
-        subject = Subject()
-        subject.add()
-
-        data = Data().read()
-        assert len(data["subject"]) == 1
-        assert data["subject"][0]["nazwa"] == "matematyka"  # .lower() w kodzie
-        assert data["subject"][0]["id"] == 0
-        assert data["subject"][0]["zadania"] == []
-
-    def test_add_empty_name(self, monkeypatch, capsys):
-        fake_input(monkeypatch, [""])
-        subject = Subject()
-        subject.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-        assert data["subject"] == []
-        assert "nie może być pusta" in captured.out
-
-    def test_add_duplicate_subject(self, monkeypatch, capsys):
-        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
-        # pierwsze wejście = duplikat -> continue; drugie = nowy przedmiot -> break
-        fake_input(monkeypatch, ["matematyka", "fizyka"])
-
-        subject = Subject()
-        subject.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-        assert "już istnieje" in captured.out
-        assert len(data["subject"]) == 2
-        assert data["subject"][1]["nazwa"] == "fizyka"
-
-
-# ---------------------------------------------------------------------------
-# Task.add
-# ---------------------------------------------------------------------------
-
-class TestTaskAdd:
-
-    def test_add_task_no_subjects(self, capsys):
-        task = Task()
-        task.add()
-        captured = capsys.readouterr()
-        assert "Brak przedmiotów!" in captured.out
-
-    def test_add_task_success(self, monkeypatch):
-        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
-        fake_input(monkeypatch, ["0", "Zrobić zadanie domowe"])
-
-        task = Task()
-        task.add()
-
-        data = Data().read()
-        zadania = data["subject"][0]["zadania"]
-        assert len(zadania) == 1
-        assert zadania[0]["task"] == "Zrobić zadanie domowe"
-        assert zadania[0]["status"] is False
-        assert zadania[0]["id_task"] == 0
-
-    def test_add_task_invalid_id_then_valid(self, monkeypatch, capsys):
-        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
-        # "abc" -> ValueError, "5" -> poza zakresem, "0" -> OK
-        fake_input(monkeypatch, ["abc", "5", "0", "Nauka na kolokwium"])
-
-        task = Task()
-        task.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-        assert "Podaj liczbę!" in captured.out
-        assert "Podaj poprawne ID przedmiotu!" in captured.out
-        assert len(data["subject"][0]["zadania"]) == 1
-
-    def test_add_task_empty_content_then_valid(self, monkeypatch, capsys):
-        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
-        fake_input(monkeypatch, ["0", "", "Przeczytać rozdział 3"])
-
-        task = Task()
-        task.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-        assert "nie może byc pusta" in captured.out
-        assert data["subject"][0]["zadania"][0]["task"] == "Przeczytać rozdział 3"
-
-    def test_add_task_negative_id_then_valid(self, monkeypatch, capsys):
-        Data().write({"subject": [{"id": 0, "nazwa": "matematyka", "zadania": []}]})
-        # "-1" -> nie powinno wskazywać na ostatni element listy (poza zakresem), "0" -> OK
-        fake_input(monkeypatch, ["-1", "0", "Nauka na kolokwium"])
-
-        task = Task()
-        task.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-
-        # -1 nie może zostać zaakceptowane jako poprawne ID
-        assert "Podaj poprawne ID przedmiotu!" in captured.out
-
-        # zadanie powinno trafić do przedmiotu o id=0, a nie zniknąć/trafić gdzie indziej
-        assert len(data["subject"][0]["zadania"]) == 1
-        assert data["subject"][0]["zadania"][0]["task"] == "Nauka na kolokwium"
-
-    def test_add_task_negative_id_does_not_target_last_subject(self, monkeypatch, capsys):
-        Data().write({
-            "subject": [
-                {"id": 0, "nazwa": "matematyka", "zadania": []},
-                {"id": 1, "nazwa": "fizyka", "zadania": []},
-            ]
-        })
-        # -1 mogłoby (błędnie) wskazywać na "fizyka" (ostatni element listy), jeśli walidacja by zawiodła
-        fake_input(monkeypatch, ["-1", "1", "Powtorka wzorow"])
-
-        task = Task()
-        task.add()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-
-        assert "Podaj poprawne ID przedmiotu!" in captured.out
-        # zadanie trafiło tam, gdzie faktycznie chcieliśmy (id=1), a nie przez przypadek przez -1
-        assert len(data["subject"][1]["zadania"]) == 1
-        assert len(data["subject"][0]["zadania"]) == 0
-
-    def test_complete_negative_subject_id_then_valid(self, monkeypatch, capsys):
-        Data().write({
-            "subject": [
-                {"id": 0, "nazwa": "matematyka", "zadania": [
-                    {"id_task": 0, "task": "Zadanie 1", "status": False}
-                ]},
-            ]
-        })
-        # "-1" -> poza zakresem, "0" -> OK, potem id_task = "0"
-        fake_input(monkeypatch, ["-1", "0", "0"])
-
-        task = Task()
-        task.complete()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-
-        assert "Błąd: Podaj poprawne ID!" in captured.out
-        assert data["subject"][0]["zadania"][0]["status"] is True
-
-
-    def test_complete_negative_subject_id_does_not_target_last_subject(self, monkeypatch, capsys):
-        Data().write({
-            "subject": [
-                {"id": 0, "nazwa": "matematyka", "zadania": [
-                    {"id_task": 0, "task": "Zadanie 1", "status": False}
-                ]},
-                {"id": 1, "nazwa": "fizyka", "zadania": [
-                    {"id_task": 0, "task": "Zadanie 2", "status": False}
-                ]},
-            ]
-        })
-        # -1 mogłoby (błędnie) wskazywać na "fizyka" (ostatni przedmiot), gdyby walidacja zawiodła
-        fake_input(monkeypatch, ["-1", "1", "0"])
-
-        task = Task()
-        task.complete()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-
-        assert "Błąd: Podaj poprawne ID!" in captured.out
-        # zmienione zostało zadanie w przedmiocie o id=1, a nie przypadkiem gdzie indziej
-        assert data["subject"][1]["zadania"][0]["status"] is True
-        assert data["subject"][0]["zadania"][0]["status"] is False
-
-
-    def test_complete_negative_task_id_then_valid(self, monkeypatch, capsys):
-        Data().write({
-            "subject": [
-                {"id": 0, "nazwa": "matematyka", "zadania": [
-                    {"id_task": 0, "task": "Zadanie 1", "status": False},
-                    {"id_task": 1, "task": "Zadanie 2", "status": False},
-                ]},
-            ]
-        })
-        # id_subject = "0" (OK), potem id_task: "-1" -> poza zakresem, "1" -> OK
-        fake_input(monkeypatch, ["0", "-1", "1"])
-
-        task = Task()
-        task.complete()
-
-        captured = capsys.readouterr()
-        data = Data().read()
-
-        assert "Błąd: Podaj poprawne ID!" in captured.out
-        # -1 nie mogło (błędnie) oznaczyć ostatniego zadania na liście (id_task=1) zamiast dopiero po walidacji
-        assert data["subject"][0]["zadania"][1]["status"] is True
-        assert data["subject"][0]["zadania"][0]["status"] is False
-# ---------------------------------------------------------------------------
-# Task.show
-# ---------------------------------------------------------------------------
-
-class TestTaskShow:
-
-    def test_show_no_subjects(self, capsys):
-        task = Task()
-        task.show()
-        captured = capsys.readouterr()
-        assert "Brak przedmiotów!" in captured.out
-
-    def test_show_with_subject_and_task(self, capsys):
-        Data().write({"subject": [{
-            "id": 0, "nazwa": "matematyka",
-            "zadania": [{"id_task": 0, "task": "Zrobić zadanie", "status": False}]
-        }]})
-        task = Task()
-        task.show()
-
-        captured = capsys.readouterr()
-        assert "matematyka" in captured.out
-        assert "Zrobić zadanie" in captured.out
-
-
-# ---------------------------------------------------------------------------
-# Task.complete
-# ---------------------------------------------------------------------------
-
-class TestTaskComplete:
-
-    def test_complete_marks_task_as_done(self, monkeypatch):
-        """
-        Bug z Extras.get_user_int(...) (bez self) zamiast extras.get_user_int(...)
-        został naprawiony w wersji z BaseManager - complete() teraz poprawnie
-        oznacza zadanie jako wykonane.
-        """
-        Data().write({"subject": [{
-            "id": 0, "nazwa": "matematyka",
-            "zadania": [{"id_task": 0, "task": "Zrobić zadanie", "status": False}]
-        }]})
-        fake_input(monkeypatch, ["0", "0"])
-
-        task = Task()
-        task.complete()
-
-        data = Data().read()
-        assert data["subject"][0]["zadania"][0]["status"] is True
-
-    def test_complete_already_done_task(self, monkeypatch, capsys):
-        Data().write({"subject": [{
-            "id": 0, "nazwa": "matematyka",
-            "zadania": [{"id_task": 0, "task": "Zrobić zadanie", "status": True}]
-        }]})
-        fake_input(monkeypatch, ["0", "0"])
-
-        task = Task()
-        task.complete()
-
-        captured = capsys.readouterr()
-        assert "już zostało wykonane" in captured.out
+    values = iter(values)
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(values))
+
+class TestInputHelpers:
+    def test_ask_date(self, monkeypatch):
+        fake_input(monkeypatch, ["2026-08-18"])
+        assert ask_date("data") == date(2026, 8, 18)
+    def test_ask_int_retries(self, monkeypatch):
+        fake_input(monkeypatch, ["abc", "0", "4"])
+        assert ask_int("liczba", allow_empty=False, min_value=1) == 4
+    def test_ask_float_retries(self, monkeypatch):
+        fake_input(monkeypatch, ["101", "42.5"])
+        assert ask_float("wynik", allow_empty=False, min_value=0, max_value=100) == 42.5
+    def test_ask_choice_normalizes_input(self, monkeypatch):
+        fake_input(monkeypatch, ["medium"])
+        assert ask_choice("priorytet", ["LOW", "MEDIUM"]) == "MEDIUM"
+
+class TestAuth:
+    def test_password_hash_is_not_plaintext(self):
+        hashed = hash_password("tajne-haslo")
+        assert hashed != "tajne-haslo"
+        assert verify_password("tajne-haslo", hashed)
+        assert not verify_password("bledne", hashed)
+
+
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+
+@pytest.fixture
+def database_session():
+    if not TEST_DATABASE_URL or not TEST_DATABASE_URL.startswith("postgresql"):
+        pytest.skip("Ustaw TEST_DATABASE_URL na testową bazę PostgreSQL")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from data.database import Base
+    from data.models import User, Subject
+    engine = create_engine(TEST_DATABASE_URL)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        user = User(username="pytest_user", password_hash="hash")
+        session.add(user); session.flush()
+        subject = Subject(nazwa="matematyka", user_uid=user.user_uid)
+        session.add(subject); session.commit()
+        yield session, user, subject
+    finally:
+        session.rollback(); session.close(); Base.metadata.drop_all(engine); engine.dispose()
+
+def test_sqlalchemy_postgres_persists_relationship(database_session):
+    session, user, _ = database_session
+    from data.models import Subject
+    loaded = session.query(Subject).filter_by(user_uid=user.user_uid).one()
+    assert loaded.nazwa == "matematyka"
+    assert loaded.user_uid == user.user_uid
+
+@pytest.fixture
+def app_session(database_session, monkeypatch):
+    session, user, subject = database_session
+    user_uid = user.user_uid
+    monkeypatch.setattr(functions, "SessionLocal", lambda: session)
+    return session, user_uid, subject
+
+def test_subject_service_add(app_session, monkeypatch):
+    session, user_uid, _ = app_session
+    fake_input(monkeypatch, ["fizyka", ""])
+    functions.SubjectService(user_uid).add()
+    names = {s.nazwa for s in functions.SubjectService(user_uid)._get_all(session)}
+    assert names == {"fizyka", "matematyka"}
+
+def test_topic_and_task_persist(app_session, monkeypatch):
+    session, user_uid, _ = app_session
+    fake_input(monkeypatch, ["matematyka", "algebra", "HARD"])
+    functions.TopicService(user_uid).add()
+    fake_input(monkeypatch, ["matematyka", "algebra", "zadanie", "", "HIGH"])
+    functions.TaskService(user_uid).add()
+    topic = session.query(functions.TopicModel).one()
+    assert topic.tasks[0].title == "zadanie"
+    assert topic.tasks[0].priority.value == "HIGH"
+
+def test_task_title_must_be_unique_within_topic(app_session, monkeypatch):
+    session, user_uid, subject = app_session
+    from data.models import Topic, Task
+    topic = Topic(nazwa="algebra", subject_uid=subject.subject_uid)
+    session.add(topic); session.commit()
+    session.add(Task(title="Powtórz wzory", topic_uid=topic.topic_uid)); session.commit()
+
+    fake_input(monkeypatch, ["matematyka", "algebra", "powtórz wzory", "Powtórz geometrię", "", "HIGH"])
+    functions.TaskService(user_uid).add()
+
+    titles = [task.title for task in session.query(Task).filter_by(topic_uid=topic.topic_uid).all()]
+    assert titles == ["Powtórz wzory", "Powtórz geometrię"]
+
+def test_auth_register_and_login(app_session, monkeypatch):
+    _, _, _ = app_session
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "jan")
+    monkeypatch.setattr("getpass.getpass", lambda *_a, **_k: "haslo")
+    uid = Auth().register()
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "jan")
+    assert Auth().login() == uid
+
+def test_invalid_exam_score_rejected(app_session):
+    session, _, subject = app_session
+    from data.models import ExamResult
+    from sqlalchemy.exc import IntegrityError
+    session.add(ExamResult(subject_uid=subject.subject_uid, exam_date=date.today(), score_percent=101))
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()

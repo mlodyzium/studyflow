@@ -75,6 +75,7 @@ def upgrade() -> None:
         sa.Column("started_at", sa.DateTime(), nullable=False),
         sa.Column("duration_minutes", sa.Integer(), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
+        sa.CheckConstraint("duration_minutes >= 0", name="duration_minutes_positive"),
         sa.ForeignKeyConstraint(["subject_uid"], ["subjects.subject_uid"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("study_uid"),
     )
@@ -85,6 +86,7 @@ def upgrade() -> None:
         sa.Column("subject_uid", sa.Uuid(), nullable=False),
         sa.Column("exam_date", sa.Date(), nullable=True),
         sa.Column("score_percent", sa.Numeric(5, 2), nullable=True),
+        sa.CheckConstraint("score_percent BETWEEN 0 AND 100", name="score_percent_range"),
         sa.ForeignKeyConstraint(["subject_uid"], ["subjects.subject_uid"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("exam_uid"),
     )
