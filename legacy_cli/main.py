@@ -1,4 +1,4 @@
-from functions import Subject, Task
+from legacy_cli.functions import Subject, Task
 
 MENU = """
 📚 STUDYFLOW - MENU 📚

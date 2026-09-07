@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from functions import Data, Extras, Subject, Task
+from legacy_cli.functions import Data, Extras, Subject, Task
 
 # ---------------------------------------------------------------------------
 # FIXTURES / HELPERY

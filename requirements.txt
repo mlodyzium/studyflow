@@ -1,0 +1,10 @@
+fastapi>=0.116,<1.0
+uvicorn[standard]>=0.35,<1.0
+sqlalchemy>=2.0,<3.0
+pydantic[email]>=2.11,<3.0
+python-dotenv>=1.1,<2.0
+pwdlib[argon2]>=0.3,<1.0
+psycopg[binary]>=3.2,<4.0
+alembic>=1.16,<2.0
+pytest>=8.4,<10.0
+httpx>=0.28,<1.0
