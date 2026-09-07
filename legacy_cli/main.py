@@ -2,11 +2,11 @@ import sys
 
 if "--test" in sys.argv or "test_functions" in sys.argv:
     import pytest
-    result = pytest.main(["-q", "test_functions.py"])
+    result = pytest.main(["-q", "legacy_cli/test_functions.py"])
     # Brak lokalnych zależności/bazy oznacza same skipy, nie błąd aplikacji.
     raise SystemExit(0 if result == 5 else result)
 
-from functions import (
+from legacy_cli.functions import (
     Auth,
     ExamResultService,
     StudySessionService,
@@ -14,7 +14,6 @@ from functions import (
     TaskService,
     TopicService,
 )
-from init_db import init_db
 
 MAIN_MENU = """
 ========================================
@@ -121,5 +120,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_db()
     main()

@@ -1,28 +1,4 @@
-import os
+"""Compatibility layer; new code should import from app.db.database."""
+from app.db.database import Base, SessionLocal, engine, get_db
 
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
-load_dotenv()
-
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    if all((DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME)):
-        DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    else:
-        # Pozwala importować moduły i uruchamiać testy jednostkowe bez .env.
-        # Aplikacja produkcyjna nadal wymaga poprawnego PostgreSQL w .env.
-        DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-class Base(DeclarativeBase):
-    pass
+__all__ = ["Base", "SessionLocal", "engine", "get_db"]

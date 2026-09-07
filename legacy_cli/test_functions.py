@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 
-import functions
+from legacy_cli import functions
 from data.auth import hash_password, verify_password
-from functions import Auth, ask_choice, ask_date, ask_float, ask_int
+from legacy_cli.functions import Auth, ask_choice, ask_date, ask_float, ask_int
 
 
 def fake_input(monkeypatch, values):
@@ -36,9 +36,6 @@ class TestAuth:
 
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-
-if not TEST_DATABASE_URL:  
-    pytest.skip("Ustaw TEST_DATABASE_URL na osobną bazę testową PostgreSQL")  
 
 @pytest.fixture
 def database_session():

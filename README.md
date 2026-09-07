@@ -1,248 +1,118 @@
-# 📚 StudyFlow
+# StudyFlow API
 
-StudyFlow to konsolowa aplikacja napisana w Pythonie, której celem jest ułatwienie organizacji nauki. Aplikacja pozwala użytkownikowi zarządzać przedmiotami, tematami i zadaniami, rejestrować sesje nauki oraz zapisywać wyniki egzaminów.
+StudyFlow to backend aplikacji wspierającej organizację nauki. Pozwala zarządzać
+użytkownikami, przedmiotami, tematami oraz zadaniami przez REST API. Projekt
+korzysta z FastAPI, Pydantic, SQLAlchemy, PostgreSQL oraz Alembic.
 
-Projekt wykorzystuje **Python, SQLAlchemy oraz PostgreSQL**. Dane są przypisywane do konkretnych użytkowników, a dostęp do aplikacji zabezpiecza system rejestracji i logowania z hasłami przechowywanymi w postaci bezpiecznych hashy.
+API udostępnia pełny CRUD dla głównych zasobów, automatyczną dokumentację
+Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
 
----
+## Najważniejsze możliwości
 
-## ✨ Funkcje
+- tworzenie, pobieranie, edycja i usuwanie użytkowników,
+- przypisywanie przedmiotów do użytkowników,
+- przypisywanie tematów do przedmiotów,
+- tworzenie zadań z terminem, statusem i priorytetem,
+- filtrowanie przedmiotów, tematów i zadań po obiektach nadrzędnych,
+- walidacja requestów i odpowiedzi przez Pydantic,
+- obsługa błędów HTTP, między innymi `404`, `409` i `422`,
+- migracje schematu PostgreSQL za pomocą Alembic,
+- testy API uruchamiane na izolowanej bazie SQLite.
 
-### 🔐 Autoryzacja
+## Technologie
 
-* rejestracja nowych użytkowników,
-* logowanie,
-* walidacja danych logowania,
-* hasła przechowywane jako hash przy użyciu `bcrypt`,
-* oddzielne dane dla każdego użytkownika.
+- Python 3.11+
+- FastAPI
+- Uvicorn
+- Pydantic
+- SQLAlchemy 2
+- PostgreSQL i Psycopg 3
+- Alembic
+- pwdlib z Argon2
+- pytest i HTTPX
 
-### 📚 Przedmioty
+## Architektura
 
-Dla każdego przedmiotu można:
+Żądanie przechodzi przez aplikację w następujący sposób:
 
-* dodać nowy przedmiot,
-* określić datę egzaminu,
-* wyświetlić przedmioty,
-* edytować dane,
-* usunąć przedmiot.
+```text
+Swagger / frontend / klient HTTP
+              |
+              v
+         FastAPI router
+              |
+              v
+       Pydantic schema
+              |
+              v
+       service biznesowy
+              |
+              v
+          SQLAlchemy
+              |
+              v
+          PostgreSQL
+```
 
-Usunięcie przedmiotu usuwa również powiązane z nim dane.
+Router odpowiada za komunikację HTTP, schemat Pydantic za walidację, service za
+logikę biznesową, a model SQLAlchemy za odwzorowanie tabel PostgreSQL.
 
-### 📖 Tematy
-
-Każdy przedmiot może posiadać wiele tematów.
-
-Dla tematów dostępne są:
-
-* dodawanie,
-* wyświetlanie,
-* edycja,
-* usuwanie,
-* określenie poziomu trudności:
-
-  * `EASY`,
-  * `MEDIUM`,
-  * `HARD`,
-* oznaczenie tematu jako opanowanego.
-
-### ✅ Zadania
-
-Zadania są przypisywane do konkretnych tematów.
-
-Dostępne informacje:
-
-* treść zadania,
-* termin wykonania,
-* priorytet:
-
-  * `LOW`,
-  * `MEDIUM`,
-  * `HIGH`,
-* status wykonania.
-
-Dostępne operacje:
-
-* dodawanie,
-* wyświetlanie,
-* edycja,
-* usuwanie,
-* oznaczanie jako wykonane.
-
-Podczas dodawania zadania można również utworzyć nowy temat, jeśli nie istnieje jeszcze odpowiedni temat.
-
-### ⏱️ Sesje nauki
-
-StudyFlow umożliwia rejestrowanie czasu poświęconego na naukę.
-
-Każda sesja może zawierać:
-
-* przedmiot,
-* datę i godzinę rozpoczęcia,
-* czas trwania w minutach,
-* opcjonalne notatki.
-
-Sesje można:
-
-* dodawać,
-* wyświetlać,
-* edytować,
-* usuwać.
-
-### 📝 Wyniki egzaminów
-
-Dla każdego przedmiotu można zapisywać wyniki egzaminów.
-
-Każdy wynik zawiera:
-
-* datę egzaminu,
-* wynik procentowy.
-
-Wynik jest walidowany w zakresie `0–100%`.
-
----
-
-## 🏗️ Struktura projektu
+## Struktura projektu
 
 ```text
 studyflow/
-│
-├── data/
-│   ├── auth.py
-│   ├── database.py
-│   └── models.py
-│
-├── functions.py
-├── init_db.py
-├── main.py
-├── requirements.txt
-├── test_functions.py
-├── .gitignore
-└── README.md
+├── alembic/                 # środowisko i wersje migracji
+│   └── versions/            # kolejne zmiany schematu bazy
+├── app/
+│   ├── core/                # konfiguracja i bezpieczeństwo
+│   ├── db/                  # engine, sesje i zależność get_db
+│   ├── models/              # modele SQLAlchemy
+│   ├── routers/             # endpointy FastAPI
+│   ├── schemas/             # schematy requestów i odpowiedzi
+│   ├── services/            # logika biznesowa i operacje CRUD
+│   └── main.py              # punkt wejścia aplikacji
+├── data/                    # kompatybilność ze starszymi importami
+├── legacy_cli/              # archiwalna wersja konsolowa
+├── tests/                   # testy API
+├── .env.example             # przykład konfiguracji
+├── alembic.ini              # konfiguracja Alembic
+└── requirements.txt         # zależności projektu
 ```
 
-### `main.py`
+## Instalacja
 
-Odpowiada za interfejs konsolowy oraz nawigację po aplikacji.
+Sklonuj repozytorium i przejdź do jego katalogu:
 
-Zawiera:
-
-* menu autoryzacji,
-* menu główne,
-* wspólne podmenu CRUD,
-* obsługę przedmiotów,
-* obsługę tematów,
-* obsługę zadań,
-* obsługę sesji nauki,
-* obsługę wyników egzaminów.
-
-### `functions.py`
-
-Zawiera główną logikę aplikacji.
-
-Najważniejsze klasy:
-
-* `Auth` — rejestracja i logowanie,
-* `SubjectService` — zarządzanie przedmiotami,
-* `TopicService` — zarządzanie tematami,
-* `TaskService` — zarządzanie zadaniami,
-* `StudySessionService` — zarządzanie sesjami nauki,
-* `ExamResultService` — zarządzanie wynikami egzaminów.
-
-Znajdują się tutaj również funkcje pomocnicze odpowiedzialne za walidację danych wejściowych.
-
-### `data/models.py`
-
-Zawiera modele SQLAlchemy reprezentujące strukturę bazy danych:
-
-* `User`,
-* `Subject`,
-* `Topic`,
-* `Task`,
-* `StudySession`,
-* `ExamResult`,
-* `Priority`.
-
-Relacje pomiędzy modelami wykorzystują klucze obce oraz mechanizm `cascade`, dzięki czemu usunięcie nadrzędnego obiektu może automatycznie usunąć powiązane dane.
-
-### `data/database.py`
-
-Odpowiada za:
-
-* konfigurację połączenia z PostgreSQL,
-* utworzenie silnika SQLAlchemy,
-* utworzenie `SessionLocal`,
-* bazową klasę modeli `Base`.
-
-Konfiguracja bazy danych jest pobierana ze zmiennych środowiskowych.
-
-### `data/auth.py`
-
-Zawiera funkcje:
-
-* `hash_password()` — tworzenie hashy haseł,
-* `verify_password()` — weryfikacja hasła.
-
-Do obsługi haseł wykorzystywany jest `bcrypt`.
-
-### `init_db.py`
-
-Odpowiada za inicjalizację bazy danych.
-
-Przed utworzeniem tabel sprawdza, czy wymagane tabele już istnieją. Jeśli nie, tworzy brakujące tabele na podstawie modeli SQLAlchemy.
-
----
-
-## 🗄️ Baza danych
-
-Projekt korzysta z **PostgreSQL**.
-
-Schemat danych można uprościć do następującej struktury:
-
-```text
-User
- │
- └── Subject
-      │
-      ├── Topic
-      │    │
-      │    └── Task
-      │
-      ├── StudySession
-      │
-      └── ExamResult
+```powershell
+git clone https://github.com/mlodyzium/studyflow.git
+cd studyflow
 ```
 
-Każdy użytkownik posiada własne przedmioty, a dane powiązane z przedmiotami są przechowywane w relacjach zależnych.
+Utwórz i aktywuj środowisko wirtualne:
 
----
-
-## ⚙️ Wymagania
-
-Do uruchomienia projektu potrzebne są:
-
-* Python 3.8+
-* PostgreSQL
-* pip
-
-Wymagane biblioteki Python:
-
-```text
-sqlalchemy
-psycopg2
-python-dotenv
-bcrypt
-pytest
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
----
+Zainstaluj zależności:
 
-## 🔧 Konfiguracja
+```powershell
+python -m pip install -r requirements.txt
+```
 
-Przed uruchomieniem aplikacji należy utworzyć plik `.env` w głównym katalogu projektu.
+## Konfiguracja PostgreSQL
 
-Przykładowa konfiguracja:
+Utwórz `.env` w głównym katalogu projektu na podstawie `.env.example`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Uzupełnij dane dostępowe:
 
 ```env
+APP_NAME=StudyFlow API
 DB_USER=postgres
 DB_PASSWORD=twoje_haslo
 DB_HOST=localhost
@@ -250,141 +120,250 @@ DB_PORT=5432
 DB_NAME=studyflow
 ```
 
-Następnie należy utworzyć bazę danych PostgreSQL o nazwie odpowiadającej `DB_NAME`.
+Zamiast osobnych zmiennych możesz ustawić pełny adres połączenia:
 
----
-
-## 🚀 Uruchomienie
-
-### 1. Pobranie repozytorium
-
-```bash
-git clone https://github.com/mlodyzium/studyflow.git
-cd studyflow
+```env
+DATABASE_URL=postgresql+psycopg://postgres:twoje_haslo@localhost:5432/studyflow
 ```
 
-### 2. Instalacja zależności
+Plik `.env` zawiera dane poufne i jest ignorowany przez Git. Do repozytorium
+należy dodawać wyłącznie `.env.example` bez prawdziwego hasła.
 
-```bash
-python3 -m pip install -r requirements.txt
+## Migracje bazy danych
+
+Dla nowej, pustej bazy zastosuj wszystkie migracje:
+
+```powershell
+alembic upgrade head
 ```
 
-### 3. Konfiguracja `.env`
+Projekt posiada migrację początkową `20260907_01`, która tworzy tabele:
 
-Utwórz plik `.env` i uzupełnij dane dostępowe do PostgreSQL.
+- `users`,
+- `subjects`,
+- `topics`,
+- `tasks`,
+- `study_sessions`,
+- `exam_results`.
 
-### 4. Inicjalizacja bazy
+Jeżeli baza ma już zgodne tabele, nie uruchamiaj na niej migracji początkowej
+tworzącej je ponownie. Oznacz istniejący schemat jako aktualny:
 
-Można uruchomić:
-
-```bash
-python init_db.py
+```powershell
+alembic stamp head
 ```
 
-Program sprawdzi, czy wymagane tabele istnieją i utworzy je w razie potrzeby.
+Nową migrację po zmianie modeli utworzysz poleceniem:
 
-### 5. Uruchomienie aplikacji
-
-```bash
-python main.py
+```powershell
+alembic revision --autogenerate -m "opis zmiany"
 ```
 
-Po uruchomieniu pojawi się menu logowania:
+Przed zastosowaniem zawsze przeczytaj wygenerowany plik. Następnie wykonaj:
+
+```powershell
+alembic upgrade head
+```
+
+Przydatne polecenia:
+
+```powershell
+alembic current
+alembic history
+alembic check
+alembic downgrade -1
+```
+
+## Uruchomienie API
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Po uruchomieniu dostępne są:
+
+- API: `http://127.0.0.1:8000`,
+- Swagger UI: `http://127.0.0.1:8000/docs`,
+- ReDoc: `http://127.0.0.1:8000/redoc`,
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`,
+- kontrola działania: `http://127.0.0.1:8000/health`.
+
+Endpoint zdrowia powinien zwrócić:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## Model danych
+
+Główna hierarchia danych wygląda następująco:
 
 ```text
-[1] Zaloguj się
-[2] Zarejestruj się
-[3] Wyjdź
+User
+└── Subject
+    ├── Topic
+    │   └── Task
+    ├── StudySession
+    └── ExamResult
 ```
 
----
+Dlatego typowa kolejność tworzenia danych to użytkownik, przedmiot, temat i
+zadanie. UUID zwrócone przez jeden endpoint jest przekazywane do następnego.
 
-## 🧪 Testy
+## Endpointy
 
-Testy obejmują walidatory danych wejściowych, hashowanie i weryfikację haseł,
-logowanie i rejestrację oraz kluczowe operacje zapisu danych w PostgreSQL.
+| Metoda | Endpoint | Opis |
+| --- | --- | --- |
+| `GET` | `/health` | Sprawdzenie działania API |
+| `POST` | `/users` | Utworzenie użytkownika |
+| `GET` | `/users` | Lista użytkowników |
+| `GET` | `/users/{user_uid}` | Pobranie użytkownika |
+| `PATCH` | `/users/{user_uid}` | Częściowa edycja użytkownika |
+| `DELETE` | `/users/{user_uid}` | Usunięcie użytkownika |
+| `POST` | `/subjects` | Utworzenie przedmiotu |
+| `GET` | `/subjects` | Lista lub filtrowanie przedmiotów |
+| `GET` | `/subjects/{subject_uid}` | Pobranie przedmiotu |
+| `PATCH` | `/subjects/{subject_uid}` | Edycja przedmiotu |
+| `DELETE` | `/subjects/{subject_uid}` | Usunięcie przedmiotu |
+| `POST` | `/topics` | Utworzenie tematu |
+| `GET` | `/topics` | Lista lub filtrowanie tematów |
+| `GET` | `/topics/{topic_uid}` | Pobranie tematu |
+| `PATCH` | `/topics/{topic_uid}` | Edycja tematu |
+| `DELETE` | `/topics/{topic_uid}` | Usunięcie tematu |
+| `POST` | `/tasks` | Utworzenie zadania |
+| `GET` | `/tasks` | Lista lub filtrowanie zadań |
+| `GET` | `/tasks/{task_uid}` | Pobranie zadania |
+| `PATCH` | `/tasks/{task_uid}` | Edycja zadania |
+| `DELETE` | `/tasks/{task_uid}` | Usunięcie zadania |
 
-Do uruchomienia testów integracyjnych potrzebna jest działająca testowa baza
-PostgreSQL. Utwórz ją na przykład tak:
+## Przykładowy przepływ w Swaggerze
 
-```bash
-createdb -h localhost -U postgres studyflow_test
+### 1. Utworzenie użytkownika
+
+`POST /users`
+
+```json
+{
+  "username": "student",
+  "password": "bezpieczne-haslo",
+  "email": "student@example.com"
+}
 ```
 
-Następnie ustaw adres testowej bazy i uruchom pytest:
+Hasło jest hashowane algorytmem Argon2. API nigdy nie zwraca hasła ani
+`password_hash` w odpowiedzi.
 
-```bash
-export TEST_DATABASE_URL="postgresql+psycopg2://postgres:TWOJE_HASLO@localhost:5432/studyflow_test"
-python3 -m pytest -q
+### 2. Utworzenie przedmiotu
+
+`POST /subjects`
+
+```json
+{
+  "name": "Matematyka",
+  "user_uid": "UUID_UŻYTKOWNIKA",
+  "exam_date": "2026-12-20"
+}
 ```
 
-Testy tworzą wymagane tabele na początku działania, a po zakończeniu usuwają
-je z testowej bazy. Ostatni zweryfikowany wynik:
+### 3. Utworzenie tematu
+
+`POST /topics`
+
+```json
+{
+  "name": "Algebra",
+  "subject_uid": "UUID_PRZEDMIOTU",
+  "difficulty": "medium"
+}
+```
+
+### 4. Utworzenie zadania
+
+`POST /tasks`
+
+```json
+{
+  "title": "Powtórzyć równania kwadratowe",
+  "topic_uid": "UUID_TEMATU",
+  "deadline": "2026-09-15T18:00:00",
+  "priority": "HIGH"
+}
+```
+
+Dopuszczalne priorytety to `LOW`, `MEDIUM` i `HIGH`.
+
+### 5. Oznaczenie zadania jako wykonane
+
+`PATCH /tasks/{task_uid}`
+
+```json
+{
+  "is_done": true
+}
+```
+
+### 6. Filtrowanie danych
 
 ```text
-10 passed, 6 warnings in 1.23s
+GET /subjects?user_uid=UUID_UŻYTKOWNIKA
+GET /topics?subject_uid=UUID_PRZEDMIOTU
+GET /tasks?topic_uid=UUID_TEMATU
 ```
 
-Ostrzeżenia dotyczą użycia `datetime.utcnow()` w SQLAlchemy i nie powodują
-niepowodzenia testów.
+## Kody odpowiedzi
 
----
+- `200 OK` — poprawny odczyt lub aktualizacja,
+- `201 Created` — poprawne utworzenie zasobu,
+- `204 No Content` — poprawne usunięcie zasobu,
+- `404 Not Found` — zasób nie istnieje,
+- `409 Conflict` — konflikt danych, np. zajęty username lub email,
+- `422 Unprocessable Entity` — dane nie przeszły walidacji Pydantic.
 
-## 🧭 Główne menu
+## Testy
 
-Po zalogowaniu użytkownik otrzymuje dostęp do:
+Uruchom wszystkie testy:
 
-```text
-[przedmioty] - Zarządzaj przedmiotami
-[tematy]     - Zarządzaj tematami
-[zadania]    - Zarządzaj zadaniami
-[sesje]      - Sesje nauki
-[egzaminy]   - Wyniki egzaminów
-[wyloguj]    - Wyloguj się
+```powershell
+python -m pytest -q --basetemp=.test-tmp
 ```
 
-Dla większości modułów dostępne są operacje:
+Testy API korzystają z tymczasowej bazy SQLite i nadpisują zależność `get_db`,
+dzięki czemu nie modyfikują danych w PostgreSQL. Zestaw sprawdza między innymi:
 
-```text
-[dodaj]
-[edytuj]
-[usun]
-[pokaz]
-[wroc]
+- endpoint `/health`,
+- pełny przepływ użytkownik → przedmiot → temat → zadanie,
+- tworzenie, pobieranie, edycję i usuwanie każdego głównego zasobu,
+- odpowiedzi `404` dla nieistniejących UUID,
+- odpowiedź `409` dla powtórzonego username,
+- zmianę hasła bez ujawniania hasha w odpowiedzi.
+
+## Archiwalna aplikacja konsolowa
+
+Poprzednia wersja programu została zachowana w `legacy_cli/`. Jest odseparowana
+od aktualnego API i używa pliku JSON zamiast PostgreSQL.
+
+```powershell
+python -m legacy_cli.main
 ```
 
----
+Uruchomienie wersji legacy może utworzyć lokalny `data.json`, który jest
+ignorowany przez Git.
 
-## 🛠️ Technologie
+## Znane ograniczenia
 
-Projekt wykorzystuje:
+- API nie ma jeszcze logowania ani tokenów dostępu,
+- listy nie mają jeszcze paginacji,
+- `study_sessions` i `exam_results` są odwzorowane w bazie, ale nie mają routerów,
+- projekt nie posiada jeszcze frontendu,
+- testy integracyjne nie uruchamiają osobnej instancji PostgreSQL.
 
-* **Python** — główny język programowania,
-* **SQLAlchemy** — ORM i obsługa modeli bazy danych,
-* **PostgreSQL** — baza danych,
-* **psycopg2** — połączenie Pythona z PostgreSQL,
-* **python-dotenv** — obsługa zmiennych środowiskowych,
-* **bcrypt** — bezpieczne haszowanie haseł,
-* **pytest** — testy jednostkowe.
+## Planowany rozwój
 
----
-
-## 🔒 Bezpieczeństwo
-
-Dane dostępowe do bazy danych nie są przechowywane bezpośrednio w kodzie.
-
-Konfiguracja znajduje się w pliku `.env`, który jest dodany do `.gitignore`.
-
-Hasła użytkowników nie są zapisywane w bazie w postaci jawnego tekstu — przed zapisaniem są haszowane przy użyciu `bcrypt`.
-
----
-
-## 🚧 Planowany rozwój
-
-Możliwe dalsze rozszerzenia projektu:
-
-* aktualizacja testów do nowej architektury,
-* rozbudowanie obsługi błędów połączenia z bazą,
-* graficzny interfejs użytkownika.
-
-##
+- uwierzytelnianie użytkowników i JWT,
+- paginacja, sortowanie i bardziej rozbudowane filtrowanie,
+- endpointy sesji nauki i wyników egzaminów,
+- frontend webowy,
+- moduł AI do generowania planów nauki i zadań,
+- testy integracyjne z PostgreSQL.
