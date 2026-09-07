@@ -1,15 +1,23 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
 from app.db.database import Base, get_db
 from app.main import app
 
+
 @pytest.fixture()
 def client():
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    test_database_url = os.getenv("TEST_DATABASE_URL")
+    if test_database_url:
+        engine = create_engine(test_database_url)
+    else:
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     TestingSession = sessionmaker(bind=engine, expire_on_commit=False)
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     def override_db():
         with TestingSession() as db:
@@ -18,86 +26,110 @@ def client():
     with TestClient(app) as api_client:
         yield api_client
     app.dependency_overrides.clear()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
 
-def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
 
-def test_full_study_flow(client):
-    user = client.post("/users", json={"username": "student", "password": "secret123", "email": "student@example.com"}).json()
-    subject = client.post("/subjects", json={"name": "Matematyka", "user_uid": user["user_uid"]}).json()
-    topic = client.post("/topics", json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
-    response = client.post("/tasks", json={"title": "Powtórzyć równania", "topic_uid": topic["topic_uid"], "priority": "HIGH"})
+def auth_headers(client, username="student"):
+    payload = {"username": username, "password": "secret123"}
+    registered = client.post("/auth/register", json=payload)
+    assert registered.status_code == 201
+    token = client.post("/auth/login", json=payload)
+    assert token.status_code == 200
+    return {"Authorization": f"Bearer {token.json()['access_token']}"}, registered.json()
+
+
+def create_subject(client, headers, name="Matematyka"):
+    response = client.post("/subjects", headers=headers, json={"name": name})
     assert response.status_code == 201
-    task = response.json()
-    completed = client.patch(f"/tasks/{task['task_uid']}", json={"is_done": True})
-    assert completed.status_code == 200
-    assert completed.json()["is_done"] is True
-    assert len(client.get("/tasks", params={"topic_uid": topic["topic_uid"]}).json()) == 1
+    return response.json()
 
-def create_tree(client, suffix=""):
-    user = client.post("/users", json={"username": f"student{suffix}", "password": "secret123"}).json()
-    subject = client.post("/subjects", json={"name": "Math", "user_uid": user["user_uid"]}).json()
-    topic = client.post("/topics", json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
-    task = client.post("/tasks", json={"title": "Equations", "topic_uid": topic["topic_uid"]}).json()
-    return user, subject, topic, task
 
-@pytest.mark.parametrize(
-    ("resource", "uid_field", "update_body", "updated_field", "updated_value"),
-    [
-        ("users", "user_uid", {"username": "updated-user"}, "username", "updated-user"),
-        ("subjects", "subject_uid", {"name": "Physics"}, "name", "Physics"),
-        ("topics", "topic_uid", {"name": "Geometry", "is_done": True}, "name", "Geometry"),
-        ("tasks", "task_uid", {"title": "New title"}, "title", "New title"),
-    ],
-)
-def test_get_and_update_every_resource(
-    client, resource, uid_field, update_body, updated_field, updated_value
-):
-    records = create_tree(client, resource)
-    record = dict(zip(("users", "subjects", "topics", "tasks"), records))[resource]
-    uid = record[uid_field]
+def test_health_and_request_id(client):
+    response = client.get("/health", headers={"X-Request-ID": "test-123"})
+    assert response.json() == {"status": "ok"}
+    assert response.headers["X-Request-ID"] == "test-123"
 
-    assert client.get(f"/{resource}/{uid}").status_code == 200
-    response = client.patch(f"/{resource}/{uid}", json=update_body)
-    assert response.status_code == 200
-    assert response.json()[updated_field] == updated_value
 
-@pytest.mark.parametrize(
-    ("resource", "uid_field"),
-    [
-        ("tasks", "task_uid"),
-        ("topics", "topic_uid"),
-        ("subjects", "subject_uid"),
-        ("users", "user_uid"),
-    ],
-)
-def test_delete_every_resource(client, resource, uid_field):
-    records = create_tree(client, f"delete-{resource}")
-    record = dict(zip(("users", "subjects", "topics", "tasks"), records))[resource]
-    uid = record[uid_field]
-
-    assert client.delete(f"/{resource}/{uid}").status_code == 204
-    assert client.get(f"/{resource}/{uid}").status_code == 404
-
-@pytest.mark.parametrize("resource", ["users", "subjects", "topics", "tasks"])
-def test_unknown_resource_returns_404(client, resource):
-    response = client.get(f"/{resource}/00000000-0000-0000-0000-000000000000")
-    assert response.status_code == 404
-
-def test_duplicate_username_returns_409(client):
-    payload = {"username": "duplicate", "password": "secret123"}
-    assert client.post("/users", json=payload).status_code == 201
-    assert client.post("/users", json=payload).status_code == 409
-
-def test_password_can_be_changed_but_is_never_returned(client):
-    response = client.post("/users", json={"username": "secure-user", "password": "first-password"})
-    assert response.status_code == 201
-    user = response.json()
-    assert "password" not in user
-    assert "password_hash" not in user
-
-    updated = client.patch(
-        f"/users/{user['user_uid']}", json={"password": "second-password"}
+def test_frontend_origin_is_allowed(client):
+    response = client.options(
+        "/subjects",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
     )
-    assert updated.status_code == 200
-    assert "password_hash" not in updated.json()
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_login_and_current_user(client):
+    headers, user = auth_headers(client)
+    current = client.get("/users/me", headers=headers)
+    assert current.status_code == 200
+    assert current.json()["user_uid"] == user["user_uid"]
+    assert "password_hash" not in current.json()
+    assert client.post("/auth/login", json={"username": "student", "password": "wrong-password"}).status_code == 401
+
+
+@pytest.mark.parametrize("path", ["/users/me", "/subjects", "/topics", "/tasks", "/study-sessions", "/exam-results"])
+def test_protected_endpoints_require_token(client, path):
+    assert client.get(path).status_code == 401
+
+
+def test_users_cannot_access_each_others_data(client):
+    first_headers, _ = auth_headers(client, "first-user")
+    second_headers, _ = auth_headers(client, "second-user")
+    subject = create_subject(client, first_headers)
+    assert client.get(f"/subjects/{subject['subject_uid']}", headers=second_headers).status_code == 404
+    assert client.get("/subjects", headers=second_headers).json()["total"] == 0
+
+
+def test_full_crud_for_study_resources(client):
+    headers, _ = auth_headers(client)
+    subject = create_subject(client, headers)
+    subject_uid = subject["subject_uid"]
+    topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject_uid}).json()
+    task = client.post("/tasks", headers=headers, json={"title": "Równania", "topic_uid": topic["topic_uid"], "priority": "HIGH"}).json()
+    session = client.post("/study-sessions", headers=headers, json={"subject_uid": subject_uid, "duration_minutes": 45, "notes": "Powtórka"}).json()
+    result = client.post("/exam-results", headers=headers, json={"subject_uid": subject_uid, "score_percent": 88.5}).json()
+
+    resources = [
+        ("subjects", subject_uid, {"name": "Fizyka"}, "name", "Fizyka"),
+        ("topics", topic["topic_uid"], {"is_done": True}, "is_done", True),
+        ("tasks", task["task_uid"], {"is_done": True}, "is_done", True),
+        ("study-sessions", session["study_uid"], {"duration_minutes": 60}, "duration_minutes", 60),
+        ("exam-results", result["exam_uid"], {"score_percent": 90}, "score_percent", "90.00"),
+    ]
+    for resource, uid, update, field, expected in resources:
+        assert client.get(f"/{resource}/{uid}", headers=headers).status_code == 200
+        changed = client.patch(f"/{resource}/{uid}", headers=headers, json=update)
+        assert changed.status_code == 200
+        assert changed.json()[field] == expected
+
+    for resource, uid, *_ in reversed(resources):
+        assert client.delete(f"/{resource}/{uid}", headers=headers).status_code == 204
+        assert client.get(f"/{resource}/{uid}", headers=headers).status_code == 404
+
+
+def test_pagination_filters_search_and_sort(client):
+    headers, _ = auth_headers(client)
+    subject = create_subject(client, headers)
+    topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject["subject_uid"], "difficulty": "HARD"}).json()
+    for number, priority in enumerate(["LOW", "HIGH", "HIGH"]):
+        client.post("/tasks", headers=headers, json={"title": f"Task {number}", "topic_uid": topic["topic_uid"], "priority": priority})
+
+    page = client.get("/tasks", headers=headers, params={"priority": "HIGH", "search": "Task", "sort": "title", "order": "desc", "page": 1, "page_size": 1})
+    assert page.status_code == 200
+    assert page.json()["total"] == 2
+    assert page.json()["pages"] == 2
+    assert len(page.json()["items"]) == 1
+    assert client.get("/tasks", headers=headers, params={"sort": "invalid"}).status_code == 422
+
+
+def test_input_validation(client):
+    headers, _ = auth_headers(client)
+    subject = create_subject(client, headers)
+    assert client.post("/study-sessions", headers=headers, json={"subject_uid": subject["subject_uid"], "duration_minutes": -1}).status_code == 422
+    assert client.post("/exam-results", headers=headers, json={"subject_uid": subject["subject_uid"], "score_percent": 101}).status_code == 422
+    assert client.get("/subjects", headers=headers, params={"page": 0}).status_code == 422

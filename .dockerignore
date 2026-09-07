@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.venv
+.pytest_cache
+.test-tmp
+__pycache__
+*.py[cod]
+*.db
+data.json
+legacy_cli

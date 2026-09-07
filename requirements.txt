@@ -8,3 +8,4 @@ psycopg[binary]>=3.2,<4.0
 alembic>=1.16,<2.0
 pytest>=8.4,<10.0
 httpx>=0.28,<1.0
+PyJWT>=2.10,<3.0

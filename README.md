@@ -10,6 +10,7 @@ Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
 ## Najważniejsze możliwości
 
 - tworzenie, pobieranie, edycja i usuwanie użytkowników,
+- rejestracja, logowanie JWT i izolacja danych użytkowników,
 - przypisywanie przedmiotów do użytkowników,
 - przypisywanie tematów do przedmiotów,
 - tworzenie zadań z terminem, statusem i priorytetem,
@@ -118,6 +119,9 @@ DB_PASSWORD=twoje_haslo
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=studyflow
+JWT_SECRET_KEY=wygeneruj-dlugi-losowy-sekret
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
 Zamiast osobnych zmiennych możesz ustawić pełny adres połączenia:
@@ -128,6 +132,76 @@ DATABASE_URL=postgresql+psycopg://postgres:twoje_haslo@localhost:5432/studyflow
 
 Plik `.env` zawiera dane poufne i jest ignorowany przez Git. Do repozytorium
 należy dodawać wyłącznie `.env.example` bez prawdziwego hasła.
+
+## Docker Compose
+
+Projekt można uruchomić razem z PostgreSQL w kontenerach. Wymagany jest Docker
+Desktop z obsługą polecenia `docker compose`.
+
+Skopiuj przykładową konfigurację, jeżeli nie masz jeszcze `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Następnie zbuduj i uruchom cały zestaw:
+
+```powershell
+docker compose up --build
+```
+
+Compose uruchamia dwie usługi:
+
+- `db` — PostgreSQL z trwałym wolumenem `postgres_data`,
+- `api` — FastAPI uruchamiane przez Uvicorn.
+
+Kontener API czeka na prawidłowy healthcheck PostgreSQL, wykonuje
+`alembic upgrade head`, a następnie uruchamia serwer. Domyślne adresy:
+
+- Swagger: `http://localhost:8000/docs`,
+- healthcheck API: `http://localhost:8000/health`,
+- PostgreSQL z hosta: `localhost:5433`.
+
+Porty można zmienić w `.env`:
+
+```env
+API_PORT=8000
+POSTGRES_PORT=5433
+```
+
+Poziom logowania aplikacji można ustawić przez:
+
+```env
+LOG_LEVEL=INFO
+```
+
+Obsługiwane są standardowe poziomy Pythona, między innymi `DEBUG`, `INFO`,
+`WARNING` i `ERROR`.
+
+Przydatne polecenia:
+
+```powershell
+docker compose ps
+docker compose logs -f api
+docker compose stop
+docker compose down
+```
+
+Każdy request poza healthcheckiem jest logowany z metodą HTTP, ścieżką,
+statusem, czasem wykonania i `request_id`. Identyfikator jest zwracany w nagłówku
+`X-Request-ID`. Możesz też przesłać własny `X-Request-ID`, co ułatwia śledzenie
+jednego żądania pomiędzy frontendem i backendem. Body requestu oraz hasła nie są
+logowane.
+
+`docker compose down` usuwa kontenery i sieć, ale zachowuje dane PostgreSQL.
+Polecenie poniżej usuwa również wolumen i wszystkie dane bazy kontenerowej:
+
+```powershell
+docker compose down -v
+```
+
+> Baza uruchomiona przez Compose jest oddzielna od PostgreSQL zainstalowanego
+> bezpośrednio na komputerze. Dane są przechowywane w wolumenie Dockera.
 
 ## Migracje bazy danych
 
@@ -217,11 +291,11 @@ zadanie. UUID zwrócone przez jeden endpoint jest przekazywane do następnego.
 | Metoda | Endpoint | Opis |
 | --- | --- | --- |
 | `GET` | `/health` | Sprawdzenie działania API |
-| `POST` | `/users` | Utworzenie użytkownika |
-| `GET` | `/users` | Lista użytkowników |
-| `GET` | `/users/{user_uid}` | Pobranie użytkownika |
-| `PATCH` | `/users/{user_uid}` | Częściowa edycja użytkownika |
-| `DELETE` | `/users/{user_uid}` | Usunięcie użytkownika |
+| `POST` | `/auth/register` | Rejestracja użytkownika |
+| `POST` | `/auth/login` | Logowanie i pobranie tokenu JWT |
+| `GET` | `/users/me` | Dane zalogowanego użytkownika |
+| `PATCH` | `/users/me` | Edycja własnego konta |
+| `DELETE` | `/users/me` | Usunięcie własnego konta |
 | `POST` | `/subjects` | Utworzenie przedmiotu |
 | `GET` | `/subjects` | Lista lub filtrowanie przedmiotów |
 | `GET` | `/subjects/{subject_uid}` | Pobranie przedmiotu |
@@ -237,12 +311,16 @@ zadanie. UUID zwrócone przez jeden endpoint jest przekazywane do następnego.
 | `GET` | `/tasks/{task_uid}` | Pobranie zadania |
 | `PATCH` | `/tasks/{task_uid}` | Edycja zadania |
 | `DELETE` | `/tasks/{task_uid}` | Usunięcie zadania |
+| `POST/GET` | `/study-sessions` | Tworzenie i lista sesji nauki |
+| `GET/PATCH/DELETE` | `/study-sessions/{uid}` | CRUD pojedynczej sesji |
+| `POST/GET` | `/exam-results` | Tworzenie i lista wyników egzaminów |
+| `GET/PATCH/DELETE` | `/exam-results/{uid}` | CRUD pojedynczego wyniku |
 
 ## Przykładowy przepływ w Swaggerze
 
 ### 1. Utworzenie użytkownika
 
-`POST /users`
+`POST /auth/register`
 
 ```json
 {
@@ -255,6 +333,10 @@ zadanie. UUID zwrócone przez jeden endpoint jest przekazywane do następnego.
 Hasło jest hashowane algorytmem Argon2. API nigdy nie zwraca hasła ani
 `password_hash` w odpowiedzi.
 
+Następnie zaloguj się przez `POST /auth/login` i skopiuj `access_token`.
+W Swaggerze kliknij **Authorize** i podaj token. Wszystkie dalsze operacje są
+ograniczone do danych zalogowanego użytkownika.
+
 ### 2. Utworzenie przedmiotu
 
 `POST /subjects`
@@ -262,7 +344,6 @@ Hasło jest hashowane algorytmem Argon2. API nigdy nie zwraca hasła ani
 ```json
 {
   "name": "Matematyka",
-  "user_uid": "UUID_UŻYTKOWNIKA",
   "exam_date": "2026-12-20"
 }
 ```
@@ -307,10 +388,45 @@ Dopuszczalne priorytety to `LOW`, `MEDIUM` i `HIGH`.
 ### 6. Filtrowanie danych
 
 ```text
-GET /subjects?user_uid=UUID_UŻYTKOWNIKA
+GET /subjects?search=matematyka
 GET /topics?subject_uid=UUID_PRZEDMIOTU
 GET /tasks?topic_uid=UUID_TEMATU
 ```
+
+## Paginacja
+
+Endpointy listujące przedmioty, tematy, zadania, sesje i wyniki
+przyjmują parametry `page` i `page_size`:
+
+```text
+GET /tasks?page=2&page_size=20
+```
+
+- `page` zaczyna się od `1`,
+- domyślne `page_size` wynosi `20`,
+- maksymalne `page_size` wynosi `100`,
+- filtry można łączyć z paginacją.
+
+Przykład:
+
+```text
+GET /tasks?topic_uid=UUID_TEMATU&page=1&page_size=10
+```
+
+Odpowiedź listy ma wspólny format:
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "page_size": 10,
+  "total": 0,
+  "pages": 0
+}
+```
+
+Pole `total` określa liczbę wszystkich rekordów spełniających filtr, natomiast
+`pages` informuje frontend, ile stron może wyświetlić.
 
 ## Kody odpowiedzi
 
@@ -339,6 +455,13 @@ dzięki czemu nie modyfikują danych w PostgreSQL. Zestaw sprawdza między innym
 - odpowiedź `409` dla powtórzonego username,
 - zmianę hasła bez ujawniania hasha w odpowiedzi.
 
+Testy na prawdziwym, tymczasowym PostgreSQL uruchomisz w Dockerze:
+
+```powershell
+docker compose --profile test run --build --rm tests
+docker compose stop db-test
+```
+
 ## Archiwalna aplikacja konsolowa
 
 Poprzednia wersja programu została zachowana w `legacy_cli/`. Jest odseparowana
@@ -353,17 +476,12 @@ ignorowany przez Git.
 
 ## Znane ograniczenia
 
-- API nie ma jeszcze logowania ani tokenów dostępu,
-- listy nie mają jeszcze paginacji,
-- `study_sessions` i `exam_results` są odwzorowane w bazie, ale nie mają routerów,
 - projekt nie posiada jeszcze frontendu,
-- testy integracyjne nie uruchamiają osobnej instancji PostgreSQL.
+- tokeny JWT nie mają jeszcze mechanizmu odświeżania ani unieważniania.
 
 ## Planowany rozwój
 
-- uwierzytelnianie użytkowników i JWT,
-- paginacja, sortowanie i bardziej rozbudowane filtrowanie,
-- endpointy sesji nauki i wyników egzaminów,
+- sortowanie i bardziej rozbudowane filtrowanie,
 - frontend webowy,
 - moduł AI do generowania planów nauki i zadań,
 - testy integracyjne z PostgreSQL.

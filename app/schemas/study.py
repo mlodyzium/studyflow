@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models import Priority
@@ -22,14 +23,20 @@ class UserRead(OrmSchema):
     email: EmailStr | None
     created_at: datetime
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class TokenRead(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
 class SubjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    user_uid: UUID
     exam_date: date | None = None
 
 class SubjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    user_uid: UUID | None = None
     exam_date: date | None = None
 
 class SubjectRead(OrmSchema):
@@ -76,3 +83,38 @@ class TaskRead(OrmSchema):
     is_done: bool
     deadline: datetime | None
     priority: Priority
+
+class StudySessionCreate(BaseModel):
+    subject_uid: UUID
+    started_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+class StudySessionUpdate(BaseModel):
+    subject_uid: UUID | None = None
+    started_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+class StudySessionRead(OrmSchema):
+    study_uid: UUID
+    subject_uid: UUID
+    started_at: datetime
+    duration_minutes: int | None
+    notes: str | None
+
+class ExamResultCreate(BaseModel):
+    subject_uid: UUID
+    exam_date: date | None = None
+    score_percent: Decimal | None = Field(default=None, ge=0, le=100)
+
+class ExamResultUpdate(BaseModel):
+    subject_uid: UUID | None = None
+    exam_date: date | None = None
+    score_percent: Decimal | None = Field(default=None, ge=0, le=100)
+
+class ExamResultRead(OrmSchema):
+    exam_uid: UUID
+    subject_uid: UUID
+    exam_date: date | None
+    score_percent: Decimal | None

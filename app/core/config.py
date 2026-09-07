@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,6 +7,23 @@ load_dotenv()
 @dataclass(frozen=True)
 class Settings:
     app_name: str = os.getenv("APP_NAME", "StudyFlow API")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
+    jwt_secret_key: str = os.getenv(
+        "JWT_SECRET_KEY", "development-only-secret-change-this-123456789"
+    )
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = int(
+        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+    )
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            origin.strip()
+            for origin in os.getenv(
+                "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
+            ).split(",")
+            if origin.strip()
+        )
+    )
     database_url: str = os.getenv(
         "DATABASE_URL",
         "postgresql+psycopg://{user}:{password}@{host}:{port}/{name}".format(
