@@ -1,8 +1,8 @@
-# StudyFlow API
+# StudyFlow
 
-StudyFlow to backend aplikacji wspierającej organizację nauki. Pozwala zarządzać
-użytkownikami, przedmiotami, tematami oraz zadaniami przez REST API. Projekt
-korzysta z FastAPI, Pydantic, SQLAlchemy, PostgreSQL oraz Alembic.
+StudyFlow to kompletna aplikacja webowa wspierająca organizację nauki. Pozwala
+zarządzać przedmiotami, tematami, zadaniami i sesjami nauki przez nowoczesny
+interfejs React oraz REST API zbudowane w FastAPI.
 
 API udostępnia pełny CRUD dla głównych zasobów, automatyczną dokumentację
 Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
@@ -14,6 +14,13 @@ Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
 - przypisywanie przedmiotów do użytkowników,
 - przypisywanie tematów do przedmiotów,
 - tworzenie zadań z terminem, statusem i priorytetem,
+- responsywny dashboard pokazujący postęp i najbliższe zadania,
+- pełna obsługa przedmiotów, tematów i zadań z poziomu interfejsu,
+- jasny i ciemny motyw zapamiętywany w przeglądarce,
+- przyjazne wdrożenie nowego użytkownika: przedmiot → temat → zadanie,
+- powiadomienia i własne okna potwierdzenia zamiast komunikatów przeglądarki,
+- własne listy wyboru oraz kalendarz terminów dopasowane do motywu aplikacji,
+- rejestrowanie czasu nauki,
 - filtrowanie przedmiotów, tematów i zadań po obiektach nadrzędnych,
 - walidacja requestów i odpowiedzi przez Pydantic,
 - obsługa błędów HTTP, między innymi `404`, `409` i `422`,
@@ -31,6 +38,8 @@ Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
 - Alembic
 - pwdlib z Argon2
 - pytest i HTTPX
+- React 19, TypeScript i Vite
+- Nginx jako serwer frontendu i reverse proxy do API
 
 ## Architektura
 
@@ -72,6 +81,11 @@ studyflow/
 │   ├── schemas/             # schematy requestów i odpowiedzi
 │   ├── services/            # logika biznesowa i operacje CRUD
 │   └── main.py              # punkt wejścia aplikacji
+├── frontend/
+│   ├── src/                  # komponenty, klient API, typy i style
+│   ├── Dockerfile            # budowanie React i obraz Nginx
+│   ├── nginx.conf            # obsługa SPA i proxy /api
+│   └── package.json           # zależności i polecenia frontendu
 ├── data/                    # kompatybilność ze starszymi importami
 ├── legacy_cli/              # archiwalna wersja konsolowa
 ├── tests/                   # testy API
