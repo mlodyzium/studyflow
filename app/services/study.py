@@ -2,7 +2,7 @@ from typing import TypeVar
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -70,8 +70,24 @@ def get_subject(db: Session, uid: UUID, user_uid: UUID):
     return value
 
 
+def _subject_name_exists(db: Session, user_uid: UUID, name: str, exclude_uid: UUID | None = None) -> bool:
+    query = select(models.Subject.subject_uid).where(
+        models.Subject.user_uid == user_uid,
+        func.lower(func.trim(models.Subject.name)) == name.strip().lower(),
+    )
+    if exclude_uid is not None:
+        query = query.where(models.Subject.subject_uid != exclude_uid)
+    return db.scalar(query.limit(1)) is not None
+
+
 def create_subject(db: Session, data: SubjectCreate, user_uid: UUID):
-    return _save(db, models.Subject(**data.model_dump(), user_uid=user_uid))
+    if not data.name.strip():
+        raise HTTPException(status_code=422, detail="Subject name cannot be empty")
+    if _subject_name_exists(db, user_uid, data.name):
+        raise HTTPException(status_code=409, detail="Subject with this name already exists")
+    values = data.model_dump()
+    values["name"] = data.name.strip()
+    return _save(db, models.Subject(**values, user_uid=user_uid))
 
 
 def list_subjects(db: Session, user_uid: UUID, page: int, page_size: int, search: str | None):
@@ -82,7 +98,15 @@ def list_subjects(db: Session, user_uid: UUID, page: int, page_size: int, search
 
 
 def update_subject(db: Session, uid: UUID, user_uid: UUID, data: SubjectUpdate):
-    value = get_subject(db, uid, user_uid); _update(value, data); return _save(db, value)
+    value = get_subject(db, uid, user_uid)
+    if data.name is not None:
+        if not data.name.strip():
+            raise HTTPException(status_code=422, detail="Subject name cannot be empty")
+        if _subject_name_exists(db, user_uid, data.name, uid):
+            raise HTTPException(status_code=409, detail="Subject with this name already exists")
+        data = data.model_copy(update={"name": data.name.strip()})
+    _update(value, data)
+    return _save(db, value)
 
 
 def delete_subject(db: Session, uid: UUID, user_uid: UUID):
@@ -165,6 +189,14 @@ def get_study_session(db: Session, uid: UUID, user_uid: UUID):
 
 def create_study_session(db: Session, data: StudySessionCreate, user_uid: UUID):
     get_subject(db, data.subject_uid, user_uid)
+    if data.topic_uid is not None:
+        topic = get_topic(db, data.topic_uid, user_uid)
+        if topic.subject_uid != data.subject_uid:
+            raise HTTPException(status_code=422, detail="Topic does not belong to the selected subject")
+    if data.task_uid is not None:
+        task = get_task(db, data.task_uid, user_uid)
+        if data.topic_uid is None or task.topic_uid != data.topic_uid:
+            raise HTTPException(status_code=422, detail="Task does not belong to the selected topic")
     return _save(db, models.StudySession(**data.model_dump(exclude_none=True)))
 
 
@@ -175,8 +207,20 @@ def list_study_sessions(db: Session, user_uid: UUID, subject_uid: UUID | None, p
 
 
 def update_study_session(db: Session, uid: UUID, user_uid: UUID, data: StudySessionUpdate):
-    if data.subject_uid is not None: get_subject(db, data.subject_uid, user_uid)
-    value = get_study_session(db, uid, user_uid); _update(value, data); return _save(db, value)
+    value = get_study_session(db, uid, user_uid)
+    subject_uid = data.subject_uid if data.subject_uid is not None else value.subject_uid
+    topic_uid = data.topic_uid if "topic_uid" in data.model_fields_set else value.topic_uid
+    task_uid = data.task_uid if "task_uid" in data.model_fields_set else value.task_uid
+    get_subject(db, subject_uid, user_uid)
+    if topic_uid is not None:
+        topic = get_topic(db, topic_uid, user_uid)
+        if topic.subject_uid != subject_uid:
+            raise HTTPException(status_code=422, detail="Topic does not belong to the selected subject")
+    if task_uid is not None:
+        task = get_task(db, task_uid, user_uid)
+        if topic_uid is None or task.topic_uid != topic_uid:
+            raise HTTPException(status_code=422, detail="Task does not belong to the selected topic")
+    _update(value, data); return _save(db, value)
 
 
 def delete_study_session(db: Session, uid: UUID, user_uid: UUID):

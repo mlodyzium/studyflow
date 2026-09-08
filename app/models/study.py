@@ -44,6 +44,7 @@ class Topic(Base):
     status = synonym("is_done")
     subject: Mapped["Subject"] = relationship(back_populates="topics")
     tasks: Mapped[list["Task"]] = relationship(back_populates="topic", cascade="all, delete-orphan")
+    study_sessions: Mapped[list["StudySession"]] = relationship(back_populates="topic")
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -53,7 +54,9 @@ class Task(Base):
     topic_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("topics.topic_uid", ondelete="CASCADE"))
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     priority: Mapped[Priority] = mapped_column(PostgreSQLEnum(Priority, name="session_priority"), default=Priority.MEDIUM)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     topic: Mapped["Topic"] = relationship(back_populates="tasks")
+    study_sessions: Mapped[list["StudySession"]] = relationship(back_populates="task")
 
 class StudySession(Base):
     __tablename__ = "study_sessions"
@@ -62,10 +65,14 @@ class StudySession(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    topic_uid: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("topics.topic_uid", ondelete="SET NULL"), nullable=True)
+    task_uid: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.task_uid", ondelete="SET NULL"), nullable=True)
     __table_args__ = (
         CheckConstraint("duration_minutes >= 0", name="duration_minutes_positive"),
     )
     subject: Mapped["Subject"] = relationship(back_populates="study_sessions")
+    topic: Mapped["Topic | None"] = relationship(back_populates="study_sessions")
+    task: Mapped["Task | None"] = relationship(back_populates="study_sessions")
 
 class ExamResult(Base):
     __tablename__ = "exam_results"

@@ -68,6 +68,7 @@ class TaskCreate(BaseModel):
     topic_uid: UUID
     deadline: datetime | None = None
     priority: Priority = Priority.MEDIUM
+    notes: str | None = None
 
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1)
@@ -75,6 +76,7 @@ class TaskUpdate(BaseModel):
     is_done: bool | None = None
     deadline: datetime | None = None
     priority: Priority | None = None
+    notes: str | None = None
 
 class TaskRead(OrmSchema):
     task_uid: UUID
@@ -83,18 +85,23 @@ class TaskRead(OrmSchema):
     is_done: bool
     deadline: datetime | None
     priority: Priority
+    notes: str | None
 
 class StudySessionCreate(BaseModel):
     subject_uid: UUID
     started_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
     notes: str | None = None
+    topic_uid: UUID | None = None
+    task_uid: UUID | None = None
 
 class StudySessionUpdate(BaseModel):
     subject_uid: UUID | None = None
     started_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
     notes: str | None = None
+    topic_uid: UUID | None = None
+    task_uid: UUID | None = None
 
 class StudySessionRead(OrmSchema):
     study_uid: UUID
@@ -102,6 +109,8 @@ class StudySessionRead(OrmSchema):
     started_at: datetime
     duration_minutes: int | None
     notes: str | None
+    topic_uid: UUID | None
+    task_uid: UUID | None
 
 class ExamResultCreate(BaseModel):
     subject_uid: UUID

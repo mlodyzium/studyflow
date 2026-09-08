@@ -85,13 +85,40 @@ def test_users_cannot_access_each_others_data(client):
     assert client.get("/subjects", headers=second_headers).json()["total"] == 0
 
 
+def test_subject_names_are_unique_per_user(client):
+    headers, _ = auth_headers(client)
+    first = create_subject(client, headers, "Matematyka")
+
+    duplicate = client.post("/subjects", headers=headers, json={"name": "  matematyka  "})
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "Subject with this name already exists"
+
+    second = create_subject(client, headers, "Fizyka")
+    renamed = client.patch(
+        f"/subjects/{second['subject_uid']}",
+        headers=headers,
+        json={"name": "MATEMATYKA"},
+    )
+    assert renamed.status_code == 409
+
+    other_headers, _ = auth_headers(client, "other-student")
+    assert client.post("/subjects", headers=other_headers, json={"name": "Matematyka"}).status_code == 201
+    assert client.patch(f"/subjects/{first['subject_uid']}", headers=headers, json={"name": " Matematyka "}).status_code == 200
+
+
 def test_full_crud_for_study_resources(client):
     headers, _ = auth_headers(client)
     subject = create_subject(client, headers)
     subject_uid = subject["subject_uid"]
     topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject_uid}).json()
-    task = client.post("/tasks", headers=headers, json={"title": "Równania", "topic_uid": topic["topic_uid"], "priority": "HIGH"}).json()
-    session = client.post("/study-sessions", headers=headers, json={"subject_uid": subject_uid, "duration_minutes": 45, "notes": "Powtórka"}).json()
+    task = client.post("/tasks", headers=headers, json={"title": "Równania", "topic_uid": topic["topic_uid"], "priority": "HIGH", "notes": "Rozdział 4"}).json()
+    session = client.post("/study-sessions", headers=headers, json={"subject_uid": subject_uid, "topic_uid": topic["topic_uid"], "task_uid": task["task_uid"], "duration_minutes": 45, "notes": "Powtórka"}).json()
+    assert task["notes"] == "Rozdział 4"
+    assert session["topic_uid"] == topic["topic_uid"]
+    assert session["task_uid"] == task["task_uid"]
+    other_subject = create_subject(client, headers, "Fizyka")
+    invalid_session = client.post("/study-sessions", headers=headers, json={"subject_uid": other_subject["subject_uid"], "topic_uid": topic["topic_uid"], "duration_minutes": 10})
+    assert invalid_session.status_code == 422
     result = client.post("/exam-results", headers=headers, json={"subject_uid": subject_uid, "score_percent": 88.5}).json()
 
     resources = [
