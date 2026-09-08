@@ -1,518 +1,585 @@
 # StudyFlow
 
-StudyFlow to kompletna aplikacja webowa wspierająca organizację nauki. Pozwala
-zarządzać przedmiotami, tematami, zadaniami i sesjami nauki przez nowoczesny
-interfejs React oraz REST API zbudowane w FastAPI.
+StudyFlow to kompletna aplikacja webowa do organizowania nauki. Łączy planowanie przedmiotów, tematów i zadań z rejestrowaniem sesji, kalendarzem oraz Asystentem AI opartym na Google Gemini.
 
-API udostępnia pełny CRUD dla głównych zasobów, automatyczną dokumentację
-Swagger, walidację danych i bezpieczne hashowanie haseł przy użyciu Argon2.
+Projekt zawiera responsywny frontend React, REST API w FastAPI, bazę PostgreSQL, uwierzytelnianie JWT, migracje Alembic, testy automatyczne oraz gotową konfigurację Docker Compose.
 
-## Najważniejsze możliwości
+## Najważniejsze funkcje
 
-- tworzenie, pobieranie, edycja i usuwanie użytkowników,
-- rejestracja, logowanie JWT i izolacja danych użytkowników,
-- przypisywanie przedmiotów do użytkowników,
-- przypisywanie tematów do przedmiotów,
-- tworzenie zadań z terminem, statusem i priorytetem,
-- responsywny dashboard pokazujący postęp i najbliższe zadania,
-- pełna obsługa przedmiotów, tematów i zadań z poziomu interfejsu,
-- jasny i ciemny motyw zapamiętywany w przeglądarce,
-- przyjazne wdrożenie nowego użytkownika: przedmiot → temat → zadanie,
-- powiadomienia i własne okna potwierdzenia zamiast komunikatów przeglądarki,
-- własne listy wyboru oraz kalendarz terminów dopasowane do motywu aplikacji,
-- rejestrowanie czasu nauki,
-- przypisywanie sesji nauki do przedmiotu, tematu i konkretnego zadania,
-- historia sesji z czasem, notatkami i licznikiem kolejnych dni nauki,
-- podgląd oraz edycja zapisanych sesji nauki,
-- prywatne notatki przy zadaniach,
-- kalendarz egzaminów i terminów zadań,
-- mini-kalendarz na dashboardzie i dodawanie zadań z widoku kalendarza,
+### Organizacja nauki
+
+- rejestracja, logowanie i edycja profilu,
+- izolacja danych pomiędzy użytkownikami,
+- przedmioty z opcjonalną datą egzaminu,
+- tematy przypisane do przedmiotów,
+- zadania z terminem, priorytetem, statusem i prywatną notatką,
 - filtrowanie zadań po przedmiocie, temacie, statusie i priorytecie,
-- edycja nazwy użytkownika, adresu e-mail i hasła z poziomu profilu,
-- krótki samouczek wyświetlany przy pierwszym uruchomieniu interfejsu,
-- filtrowanie przedmiotów, tematów i zadań po obiektach nadrzędnych,
-- walidacja requestów i odpowiedzi przez Pydantic,
-- obsługa błędów HTTP, między innymi `404`, `409` i `422`,
-- migracje schematu PostgreSQL za pomocą Alembic,
-- testy API uruchamiane na izolowanej bazie SQLite.
+- sesje nauki z czasem, notatką i powiązaniem z wybranym zasobem,
+- historia sesji i licznik kolejnych dni nauki,
+- kalendarz z egzaminami oraz terminami zadań,
+- dashboard z postępem, najbliższymi zadaniami i aktywnymi przedmiotami,
+- jasny i ciemny motyw,
+- responsywny interfejs desktopowy i mobilny.
+
+### Asystent AI
+
+Asystent wykorzystuje Gemini i oferuje dwa tryby:
+
+- **Notatka** — podsumowanie, sekcje tematyczne, najważniejsze punkty i pytania kontrolne.
+- **Plan nauki** — harmonogram rozłożony na dni, z celami, aktywnościami i czasem pracy.
+
+Przed generowaniem użytkownik wybiera rodzaj materiału, przedmiot, temat oraz opcjonalnie istniejące zadanie albo własny cel. Dla notatki można ustawić poziom szczegółowości, a dla planu liczbę dni i czas nauki dziennie.
+
+Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania. Każdy poprawny wynik jest automatycznie zapisywany w PostgreSQL i dostępny później przez **Historia materiałów** na dashboardzie.
+
+Backend AI:
+
+- nie udostępnia klucza Gemini przeglądarce,
+- wymusza odpowiedzi JSON i waliduje je przez Pydantic,
+- obsługuje timeouty i chwilowe przeciążenie API,
+- ponawia wybrane zapytania i korzysta z modelu awaryjnego,
+- weryfikuje własność tematu oraz zadania,
+- zapisuje wyniki oddzielnie dla każdego użytkownika.
 
 ## Technologie
 
-- Python 3.11+
-- FastAPI
-- Uvicorn
-- Pydantic
-- SQLAlchemy 2
-- PostgreSQL i Psycopg 3
-- Alembic
-- pwdlib z Argon2
-- pytest i HTTPX
-- React 19, TypeScript i Vite
-- Nginx jako serwer frontendu i reverse proxy do API
+| Warstwa | Technologie |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, Lucide React |
+| Serwer frontendu | Nginx |
+| Backend | Python 3.13, FastAPI, Uvicorn, Pydantic |
+| Baza | PostgreSQL 17, SQLAlchemy 2, Psycopg 3 |
+| Migracje | Alembic |
+| Bezpieczeństwo | JWT, pwdlib, Argon2 |
+| AI | Google Gemini Generate Content API |
+| Testy | pytest, FastAPI TestClient, HTTPX |
+| Kontenery | Docker, Docker Compose |
 
-## Architektura
+## Szybki start z Docker Compose
 
-Żądanie przechodzi przez aplikację w następujący sposób:
+To rekomendowany sposób uruchomienia. Nie wymaga lokalnej instalacji Node.js, PostgreSQL ani pakietów Pythona.
 
-```text
-Swagger / frontend / klient HTTP
-              |
-              v
-         FastAPI router
-              |
-              v
-       Pydantic schema
-              |
-              v
-       service biznesowy
-              |
-              v
-          SQLAlchemy
-              |
-              v
-          PostgreSQL
-```
+### Wymagania
 
-Router odpowiada za komunikację HTTP, schemat Pydantic za walidację, service za
-logikę biznesową, a model SQLAlchemy za odwzorowanie tabel PostgreSQL.
+- Git,
+- Docker Desktop z poleceniem `docker compose`,
+- klucz Gemini API do korzystania z funkcji AI.
 
-## Struktura projektu
-
-```text
-studyflow/
-├── alembic/                 # środowisko i wersje migracji
-│   └── versions/            # kolejne zmiany schematu bazy
-├── app/
-│   ├── core/                # konfiguracja i bezpieczeństwo
-│   ├── db/                  # engine, sesje i zależność get_db
-│   ├── models/              # modele SQLAlchemy
-│   ├── routers/             # endpointy FastAPI
-│   ├── schemas/             # schematy requestów i odpowiedzi
-│   ├── services/            # logika biznesowa i operacje CRUD
-│   └── main.py              # punkt wejścia aplikacji
-├── frontend/
-│   ├── src/                  # komponenty, klient API, typy i style
-│   ├── Dockerfile            # budowanie React i obraz Nginx
-│   ├── nginx.conf            # obsługa SPA i proxy /api
-│   └── package.json           # zależności i polecenia frontendu
-├── data/                    # kompatybilność ze starszymi importami
-├── legacy_cli/              # archiwalna wersja konsolowa
-├── tests/                   # testy API
-├── .env.example             # przykład konfiguracji
-├── alembic.ini              # konfiguracja Alembic
-└── requirements.txt         # zależności projektu
-```
-
-## Instalacja
-
-Sklonuj repozytorium i przejdź do jego katalogu:
+### 1. Pobierz projekt
 
 ```powershell
 git clone https://github.com/mlodyzium/studyflow.git
 cd studyflow
 ```
 
-Utwórz i aktywuj środowisko wirtualne:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-Zainstaluj zależności:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-## Konfiguracja PostgreSQL
-
-Utwórz `.env` w głównym katalogu projektu na podstawie `.env.example`:
+### 2. Utwórz konfigurację
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Uzupełnij dane dostępowe:
+W `.env` ustaw co najmniej:
 
 ```env
-APP_NAME=StudyFlow API
-DB_USER=postgres
-DB_PASSWORD=twoje_haslo
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=studyflow
+DB_PASSWORD=zmien-to-haslo
 JWT_SECRET_KEY=wygeneruj-dlugi-losowy-sekret
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+GEMINI_API_KEY=twoj_prawdziwy_klucz
 ```
 
-Zamiast osobnych zmiennych możesz ustawić pełny adres połączenia:
+Klucz Gemini można utworzyć w Google AI Studio. Aplikacja działa bez niego, ale generatory AI będą niedostępne.
 
-```env
-DATABASE_URL=postgresql+psycopg://postgres:twoje_haslo@localhost:5432/studyflow
-```
-
-Plik `.env` zawiera dane poufne i jest ignorowany przez Git. Do repozytorium
-należy dodawać wyłącznie `.env.example` bez prawdziwego hasła.
-
-## Docker Compose
-
-Frontend znajduje się w katalogu `frontend/` i jest zbudowany w React,
-TypeScript oraz Vite. W Compose jego produkcyjny build jest serwowany przez
-Nginx, który przekazuje zapytania spod `/api` do FastAPI. Dzięki temu przeglądarka
-korzysta z jednego adresu i nie wymaga dodatkowej konfiguracji CORS.
-
-Projekt można uruchomić razem z PostgreSQL w kontenerach. Wymagany jest Docker
-Desktop z obsługą polecenia `docker compose`.
-
-Skopiuj przykładową konfigurację, jeżeli nie masz jeszcze `.env`:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Następnie zbuduj i uruchom cały zestaw:
+### 3. Uruchom system
 
 ```powershell
 docker compose up --build
 ```
 
-Compose uruchamia trzy usługi:
+Uruchomienie w tle:
+
+```powershell
+docker compose up -d --build
+```
+
+Domyślne adresy:
+
+- aplikacja: http://localhost:5173,
+- Swagger UI: http://localhost:8000/docs,
+- ReDoc: http://localhost:8000/redoc,
+- API healthcheck: http://localhost:8000/health,
+- PostgreSQL z hosta: `localhost:5433`.
+
+Compose uruchamia:
 
 - `db` — PostgreSQL z trwałym wolumenem `postgres_data`,
 - `api` — FastAPI uruchamiane przez Uvicorn,
-- `frontend` — aplikację React serwowaną przez Nginx.
+- `frontend` — produkcyjny build React serwowany przez Nginx.
 
-Kontener API czeka na prawidłowy healthcheck PostgreSQL, wykonuje
-`alembic upgrade head`, a następnie uruchamia serwer. Domyślne adresy:
+API czeka na bazę, automatycznie wykonuje `alembic upgrade head`, a następnie startuje. Nginx obsługuje SPA i przekazuje `/api/*` do FastAPI.
 
-- aplikacja webowa: `http://localhost:5173`,
-- Swagger: `http://localhost:8000/docs`,
-- healthcheck API: `http://localhost:8000/health`,
-- PostgreSQL z hosta: `localhost:5433`.
-
-Porty można zmienić w `.env`:
-
-```env
-API_PORT=8000
-POSTGRES_PORT=5433
-FRONTEND_PORT=5173
-```
-
-Poziom logowania aplikacji można ustawić przez:
-
-```env
-LOG_LEVEL=INFO
-```
-
-Obsługiwane są standardowe poziomy Pythona, między innymi `DEBUG`, `INFO`,
-`WARNING` i `ERROR`.
-
-Przydatne polecenia:
+Zatrzymanie:
 
 ```powershell
-docker compose ps
-docker compose logs -f api
-docker compose stop
 docker compose down
 ```
 
-Każdy request poza healthcheckiem jest logowany z metodą HTTP, ścieżką,
-statusem, czasem wykonania i `request_id`. Identyfikator jest zwracany w nagłówku
-`X-Request-ID`. Możesz też przesłać własny `X-Request-ID`, co ułatwia śledzenie
-jednego żądania pomiędzy frontendem i backendem. Body requestu oraz hasła nie są
-logowane.
-
-`docker compose down` usuwa kontenery i sieć, ale zachowuje dane PostgreSQL.
-Polecenie poniżej usuwa również wolumen i wszystkie dane bazy kontenerowej:
+To zachowuje dane. Aby usunąć również wolumen i całą bazę:
 
 ```powershell
 docker compose down -v
 ```
 
-> Baza uruchomiona przez Compose jest oddzielna od PostgreSQL zainstalowanego
-> bezpośrednio na komputerze. Dane są przechowywane w wolumenie Dockera.
+> `down -v` nieodwracalnie usuwa konta, przedmioty, zadania, sesje i historię AI z bazy kontenerowej.
 
-## Migracje bazy danych
+## Konfiguracja `.env`
 
-Dla nowej, pustej bazy zastosuj wszystkie migracje:
+| Zmienna | Wartość domyślna | Znaczenie |
+| --- | --- | --- |
+| `APP_NAME` | `StudyFlow API` | Nazwa w OpenAPI |
+| `LOG_LEVEL` | `INFO` | Poziom logowania |
+| `JWT_SECRET_KEY` | sekret deweloperski | Klucz podpisujący JWT; zmień go poza lokalnym demo |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Ważność tokenu |
+| `CORS_ORIGINS` | localhost 3000 i 5173 | Originy oddzielone przecinkami |
+| `DB_USER` | `postgres` | Użytkownik PostgreSQL |
+| `DB_PASSWORD` | zależna od konfiguracji | Hasło PostgreSQL |
+| `DB_HOST` | `localhost` | Host bazy lokalnej; Compose używa `db` |
+| `DB_PORT` | `5432` | Wewnętrzny port PostgreSQL |
+| `DB_NAME` | `studyflow` | Nazwa bazy |
+| `DATABASE_URL` | składany z `DB_*` | Opcjonalny pełny URL SQLAlchemy |
+| `API_PORT` | `8000` | Port API na hoście |
+| `FRONTEND_PORT` | `5173` | Port aplikacji |
+| `POSTGRES_PORT` | `5433` | Port bazy na hoście |
+| `GEMINI_API_KEY` | brak | Prywatny klucz Gemini |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` | Główny model AI |
+| `GEMINI_FALLBACK_MODEL` | `gemini-flash-latest` | Model awaryjny |
+
+Przykład:
+
+```env
+APP_NAME=StudyFlow API
+LOG_LEVEL=INFO
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+
+DB_USER=postgres
+DB_PASSWORD=twoje_haslo
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=studyflow
+
+API_PORT=8000
+POSTGRES_PORT=5433
+FRONTEND_PORT=5173
+
+GEMINI_API_KEY=twoj_klucz_gemini
+GEMINI_MODEL=gemini-flash-lite-latest
+GEMINI_FALLBACK_MODEL=gemini-flash-latest
+```
+
+Alternatywny pełny adres bazy:
+
+```env
+DATABASE_URL=postgresql+psycopg://postgres:twoje_haslo@localhost:5432/studyflow
+```
+
+Plik `.env` zawiera sekrety, jest ignorowany przez Git i nie powinien być publikowany. Klucza Gemini nie należy umieszczać w zmiennych `VITE_*`, ponieważ trafiają do kodu przeglądarki.
+
+## Pierwsze użycie
+
+1. Otwórz http://localhost:5173.
+2. Utwórz konto i zaloguj się.
+3. Dodaj przedmiot, np. „Matematyka”.
+4. Dodaj temat, np. „Równania kwadratowe”.
+5. Dodaj zadanie lub otwórz Asystenta AI.
+6. Zapisuj sesje nauki, aby dashboard liczył czas i serię dni.
+
+Hierarchia danych:
+
+```text
+User
+├── Subject
+│   ├── Topic
+│   │   ├── Task
+│   │   └── AI Material
+│   ├── Study Session
+│   └── Exam Result
+└── AI Material History
+```
+
+## Jak korzystać z Asystenta AI
+
+Asystenta można otworzyć z kafla na dashboardzie lub przyciskiem w prawym dolnym rogu.
+
+### Notatka
+
+1. Wybierz **Notatka**.
+2. Wybierz przedmiot i temat.
+3. Opcjonalnie wskaż zadanie zapisane wcześniej w StudyFlow — wynik skupi się na jego celu.
+4. Jeżeli nie wybierasz zapisanego zadania, wpisz własny cel, np. „Powtórka definicji do kartkówki”.
+5. Wybierz długość: krótką, standardową lub szczegółową.
+6. Kliknij **Generuj notatkę**.
+
+### Plan nauki
+
+1. Wybierz **Plan nauki**.
+2. Wybierz przedmiot i temat.
+3. Wskaż istniejące zadanie albo wpisz własny cel.
+4. Ustaw liczbę dni od `1` do `30`.
+5. Ustaw dzienny czas od `10` do `240` minut.
+6. Kliknij **Ułóż plan**.
+
+### Historia materiałów
+
+Każdy udany wynik zapisuje się automatycznie. Na dashboardzie kliknij **Historia materiałów**, a następnie wybierz notatkę lub plan z listy. API zwraca do 50 ostatnich materiałów zalogowanego użytkownika.
+
+Materiały wygenerowane przed dodaniem historii nie pojawią się na liście. Usunięcie tematu usuwa również jego materiały. Usunięcie zadania pozostawia materiał, ale czyści opcjonalne powiązanie z tym zadaniem.
+
+> AI może popełniać błędy. Ważne informacje warto sprawdzić w podręczniku, materiałach prowadzącego lub wiarygodnym źródle.
+
+## Architektura
+
+```text
+Przeglądarka
+    │
+    ▼
+React + TypeScript
+    │ /api/*
+    ▼
+Nginx reverse proxy
+    │
+    ▼
+FastAPI routers
+    ├── Pydantic — walidacja
+    ├── Services — logika i Gemini API
+    └── SQLAlchemy
+            │
+            ▼
+        PostgreSQL
+```
+
+Klucz Gemini istnieje wyłącznie po stronie API. Frontend przekazuje identyfikatory i parametry, backend pobiera bezpieczny kontekst z bazy, wywołuje Gemini, waliduje odpowiedź i zapisuje wynik.
+
+## Struktura projektu
+
+```text
+studyflow/
+├── alembic/versions/       # migracje bazy
+├── app/
+│   ├── core/               # konfiguracja, logging i bezpieczeństwo
+│   ├── db/                 # engine i sesje SQLAlchemy
+│   ├── dependencies/       # zależności FastAPI
+│   ├── models/             # modele bazy
+│   ├── routers/            # endpointy HTTP
+│   ├── schemas/            # modele Pydantic
+│   ├── services/           # logika CRUD i Gemini
+│   └── main.py
+├── docker/entrypoint.sh    # migracje i start API
+├── frontend/
+│   ├── src/App.tsx
+│   ├── src/api.ts
+│   ├── src/types.ts
+│   ├── src/styles.css
+│   ├── Dockerfile
+│   └── nginx.conf
+├── legacy_cli/             # archiwalna wersja konsolowa
+├── tests/
+├── .env.example
+├── compose.yaml
+├── Dockerfile
+└── requirements.txt
+```
+
+## Uruchomienie bez Dockera
+
+### Backend
+
+Wymagane są Python 3.11+ i działający PostgreSQL.
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-Projekt posiada migrację początkową `20260907_01`, która tworzy tabele:
+API będzie dostępne pod http://127.0.0.1:8000.
 
-- `users`,
-- `subjects`,
-- `topics`,
-- `tasks`,
-- `study_sessions`,
-- `exam_results`.
+### Frontend
 
-Jeżeli baza ma już zgodne tabele, nie uruchamiaj na niej migracji początkowej
-tworzącej je ponownie. Oznacz istniejący schemat jako aktualny:
+Wymagany jest Node.js 22+.
 
 ```powershell
-alembic stamp head
+cd frontend
+npm install
+npm run dev
 ```
 
-Nową migrację po zmianie modeli utworzysz poleceniem:
+Build produkcyjny:
 
 ```powershell
-alembic revision --autogenerate -m "opis zmiany"
+npm run build
 ```
 
-Przed zastosowaniem zawsze przeczytaj wygenerowany plik. Następnie wykonaj:
+Poza Compose można wskazać API:
 
-```powershell
-alembic upgrade head
+```env
+VITE_API_URL=http://localhost:8000
 ```
 
-Przydatne polecenia:
+W Compose frontend używa `/api`, a Nginx przekazuje ruch do usługi `api`.
+
+## Migracje
+
+Aktualny łańcuch:
+
+- `20260907_01` — podstawowe tabele,
+- `20260907_02` — notatki zadań i kontekst sesji,
+- `20260908_03` — historia materiałów AI.
+
+Polecenia:
 
 ```powershell
 alembic current
 alembic history
-alembic check
+alembic upgrade head
 alembic downgrade -1
+alembic revision --autogenerate -m "opis zmiany"
 ```
 
-## Uruchomienie API
+Przed zastosowaniem przeczytaj wygenerowaną migrację. W Compose `upgrade head` wykonuje się automatycznie przy starcie API.
 
-```powershell
-uvicorn app.main:app --reload
+## API i autoryzacja
+
+Poza `/health`, `/auth/register` i `/auth/login` endpointy wymagają JWT:
+
+```http
+Authorization: Bearer <access_token>
 ```
 
-Po uruchomieniu dostępne są:
-
-- API: `http://127.0.0.1:8000`,
-- Swagger UI: `http://127.0.0.1:8000/docs`,
-- ReDoc: `http://127.0.0.1:8000/redoc`,
-- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`,
-- kontrola działania: `http://127.0.0.1:8000/health`.
-
-Endpoint zdrowia powinien zwrócić:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-## Model danych
-
-Główna hierarchia danych wygląda następująco:
-
-```text
-User
-└── Subject
-    ├── Topic
-    │   └── Task
-    ├── StudySession
-    └── ExamResult
-```
-
-Dlatego typowa kolejność tworzenia danych to użytkownik, przedmiot, temat i
-zadanie. UUID zwrócone przez jeden endpoint jest przekazywane do następnego.
-
-## Endpointy
+W Swaggerze kliknij **Authorize** i podaj token z `/auth/login`.
 
 | Metoda | Endpoint | Opis |
 | --- | --- | --- |
-| `GET` | `/health` | Sprawdzenie działania API |
-| `POST` | `/auth/register` | Rejestracja użytkownika |
-| `POST` | `/auth/login` | Logowanie i pobranie tokenu JWT |
-| `GET` | `/users/me` | Dane zalogowanego użytkownika |
-| `PATCH` | `/users/me` | Edycja własnego konta |
-| `DELETE` | `/users/me` | Usunięcie własnego konta |
-| `POST` | `/subjects` | Utworzenie przedmiotu |
-| `GET` | `/subjects` | Lista lub filtrowanie przedmiotów |
-| `GET` | `/subjects/{subject_uid}` | Pobranie przedmiotu |
-| `PATCH` | `/subjects/{subject_uid}` | Edycja przedmiotu |
-| `DELETE` | `/subjects/{subject_uid}` | Usunięcie przedmiotu |
-| `POST` | `/topics` | Utworzenie tematu |
-| `GET` | `/topics` | Lista lub filtrowanie tematów |
-| `GET` | `/topics/{topic_uid}` | Pobranie tematu |
-| `PATCH` | `/topics/{topic_uid}` | Edycja tematu |
-| `DELETE` | `/topics/{topic_uid}` | Usunięcie tematu |
-| `POST` | `/tasks` | Utworzenie zadania |
-| `GET` | `/tasks` | Lista lub filtrowanie zadań |
-| `GET` | `/tasks/{task_uid}` | Pobranie zadania |
-| `PATCH` | `/tasks/{task_uid}` | Edycja zadania |
-| `DELETE` | `/tasks/{task_uid}` | Usunięcie zadania |
-| `POST/GET` | `/study-sessions` | Tworzenie i lista sesji nauki |
-| `GET/PATCH/DELETE` | `/study-sessions/{uid}` | CRUD pojedynczej sesji |
-| `POST/GET` | `/exam-results` | Tworzenie i lista wyników egzaminów |
-| `GET/PATCH/DELETE` | `/exam-results/{uid}` | CRUD pojedynczego wyniku |
+| `GET` | `/health` | Stan API |
+| `POST` | `/auth/register` | Rejestracja |
+| `POST` | `/auth/login` | Logowanie |
+| `GET/PATCH/DELETE` | `/users/me` | Własne konto |
+| `POST/GET` | `/subjects` | Tworzenie i lista przedmiotów |
+| `GET/PATCH/DELETE` | `/subjects/{uid}` | Operacje na przedmiocie |
+| `POST/GET` | `/topics` | Tworzenie i lista tematów |
+| `GET/PATCH/DELETE` | `/topics/{uid}` | Operacje na temacie |
+| `POST/GET` | `/tasks` | Tworzenie i lista zadań |
+| `GET/PATCH/DELETE` | `/tasks/{uid}` | Operacje na zadaniu |
+| `POST/GET` | `/study-sessions` | Tworzenie i lista sesji |
+| `GET/PATCH/DELETE` | `/study-sessions/{uid}` | Operacje na sesji |
+| `POST/GET` | `/exam-results` | Tworzenie i lista wyników |
+| `GET/PATCH/DELETE` | `/exam-results/{uid}` | Operacje na wyniku |
+| `POST` | `/ai/topics/{topic_uid}/notes` | Generowanie i zapis notatki |
+| `POST` | `/ai/topics/{topic_uid}/plan` | Generowanie i zapis planu |
+| `GET` | `/ai/materials` | Historia materiałów użytkownika |
 
-## Przykładowy przepływ w Swaggerze
+Pełny kontrakt jest dostępny w Swagger UI.
 
-### 1. Utworzenie użytkownika
-
-`POST /auth/register`
+### Przykład notatki AI
 
 ```json
+POST /ai/topics/UUID_TEMATU/notes
+
 {
-  "username": "student",
-  "password": "bezpieczne-haslo",
-  "email": "student@example.com"
+  "language": "polski",
+  "detail_level": "standard",
+  "task_uid": "UUID_ZADANIA_LUB_NULL",
+  "custom_goal": null
 }
 ```
 
-Hasło jest hashowane algorytmem Argon2. API nigdy nie zwraca hasła ani
-`password_hash` w odpowiedzi.
+`detail_level`: `short`, `standard` albo `detailed`.
 
-Następnie zaloguj się przez `POST /auth/login` i skopiuj `access_token`.
-W Swaggerze kliknij **Authorize** i podaj token. Wszystkie dalsze operacje są
-ograniczone do danych zalogowanego użytkownika.
-
-### 2. Utworzenie przedmiotu
-
-`POST /subjects`
+### Przykład planu AI
 
 ```json
+POST /ai/topics/UUID_TEMATU/plan
+
 {
-  "name": "Matematyka",
-  "exam_date": "2026-12-20"
+  "language": "polski",
+  "days": 7,
+  "minutes_per_day": 45,
+  "task_uid": null,
+  "custom_goal": "Przygotowanie do sprawdzianu"
 }
 ```
 
-### 3. Utworzenie tematu
+Jeżeli `task_uid` nie należy do tematu z adresu, API zwróci `422`.
 
-`POST /topics`
+## Paginacja i filtrowanie
 
-```json
-{
-  "name": "Algebra",
-  "subject_uid": "UUID_PRZEDMIOTU",
-  "difficulty": "medium"
-}
-```
-
-### 4. Utworzenie zadania
-
-`POST /tasks`
-
-```json
-{
-  "title": "Powtórzyć równania kwadratowe",
-  "topic_uid": "UUID_TEMATU",
-  "deadline": "2026-09-15T18:00:00",
-  "priority": "HIGH"
-}
-```
-
-Dopuszczalne priorytety to `LOW`, `MEDIUM` i `HIGH`.
-
-### 5. Oznaczenie zadania jako wykonane
-
-`PATCH /tasks/{task_uid}`
-
-```json
-{
-  "is_done": true
-}
-```
-
-### 6. Filtrowanie danych
-
-```text
-GET /subjects?search=matematyka
-GET /topics?subject_uid=UUID_PRZEDMIOTU
-GET /tasks?topic_uid=UUID_TEMATU
-```
-
-## Paginacja
-
-Endpointy listujące przedmioty, tematy, zadania, sesje i wyniki
-przyjmują parametry `page` i `page_size`:
-
-```text
-GET /tasks?page=2&page_size=20
-```
-
-- `page` zaczyna się od `1`,
-- domyślne `page_size` wynosi `20`,
-- maksymalne `page_size` wynosi `100`,
-- filtry można łączyć z paginacją.
-
-Przykład:
-
-```text
-GET /tasks?topic_uid=UUID_TEMATU&page=1&page_size=10
-```
-
-Odpowiedź listy ma wspólny format:
+Standardowa lista:
 
 ```json
 {
   "items": [],
   "page": 1,
-  "page_size": 10,
+  "page_size": 20,
   "total": 0,
   "pages": 0
 }
 ```
 
-Pole `total` określa liczbę wszystkich rekordów spełniających filtr, natomiast
-`pages` informuje frontend, ile stron może wyświetlić.
+Strony zaczynają się od `1`, a maksymalne `page_size` to `100`.
 
-## Kody odpowiedzi
+```text
+GET /subjects?search=matematyka&page=1&page_size=20
+GET /topics?subject_uid=UUID&difficulty=Średni
+GET /tasks?topic_uid=UUID&priority=HIGH&is_done=false
+GET /tasks?search=kartkówka&sort=deadline&order=asc
+```
 
-- `200 OK` — poprawny odczyt lub aktualizacja,
-- `201 Created` — poprawne utworzenie zasobu,
-- `204 No Content` — poprawne usunięcie zasobu,
-- `404 Not Found` — zasób nie istnieje,
-- `409 Conflict` — konflikt danych, np. zajęty username lub email,
-- `422 Unprocessable Entity` — dane nie przeszły walidacji Pydantic.
+## Statusy HTTP
+
+| Status | Znaczenie |
+| --- | --- |
+| `200` | Poprawny odczyt lub aktualizacja |
+| `201` | Utworzenie zasobu |
+| `204` | Usunięcie |
+| `401` | Brak lub nieważny token |
+| `404` | Brak zasobu albo brak dostępu |
+| `409` | Konflikt danych |
+| `422` | Niepoprawne dane wejściowe |
+| `502` | Gemini nie zwróciło poprawnego materiału |
+| `503` | Integracja AI nie jest skonfigurowana |
 
 ## Testy
 
-Uruchom wszystkie testy:
+Lokalnie:
 
 ```powershell
-python -m pytest -q --basetemp=.test-tmp
+python -m pytest tests -q --basetemp=.test-tmp
 ```
 
-Testy API korzystają z tymczasowej bazy SQLite i nadpisują zależność `get_db`,
-dzięki czemu nie modyfikują danych w PostgreSQL. Zestaw sprawdza między innymi:
+Bez `TEST_DATABASE_URL` używana jest izolowana SQLite w pamięci. Gemini jest mockowane, więc testy nie zużywają limitu i nie wymagają klucza.
 
-- endpoint `/health`,
-- pełny przepływ użytkownik → przedmiot → temat → zadanie,
-- tworzenie, pobieranie, edycję i usuwanie każdego głównego zasobu,
-- odpowiedzi `404` dla nieistniejących UUID,
-- odpowiedź `409` dla powtórzonego username,
-- zmianę hasła bez ujawniania hasha w odpowiedzi.
+Zakres obejmuje autoryzację, izolację danych, CRUD, filtry, paginację, walidację AI, przekazywanie kontekstu zadania i automatyczny zapis materiałów.
 
-Testy na prawdziwym, tymczasowym PostgreSQL uruchomisz w Dockerze:
+Na PostgreSQL w Dockerze:
 
 ```powershell
 docker compose --profile test run --build --rm tests
 docker compose stop db-test
 ```
 
-## Archiwalna aplikacja konsolowa
+## Przydatne polecenia
 
-Poprzednia wersja programu została zachowana w `legacy_cli/`. Jest odseparowana
-od aktualnego API i używa pliku JSON zamiast PostgreSQL.
+```powershell
+docker compose ps
+docker compose logs -f
+docker compose logs -f api
+docker compose restart
+
+docker compose build frontend
+docker compose up -d --force-recreate frontend
+
+docker compose build api
+docker compose up -d --force-recreate api
+
+docker compose exec api alembic current
+```
+
+## Logging
+
+Każde żądanie HTTP jest logowane z metodą, ścieżką, statusem, czasem i `request_id`. Identyfikator wraca w nagłówku `X-Request-ID`; klient może przesłać własny. Body, hasła i klucz Gemini nie są logowane.
+
+```env
+LOG_LEVEL=DEBUG
+```
+
+## Rozwiązywanie problemów
+
+### Nie widzę zmian
+
+```powershell
+docker compose build frontend
+docker compose up -d --force-recreate frontend
+```
+
+Następnie użyj `Ctrl + F5`.
+
+### AI nie jest skonfigurowane
+
+Ustaw `GEMINI_API_KEY` w `.env` i odtwórz API:
+
+```powershell
+docker compose up -d --force-recreate api
+```
+
+### Błąd generowania `502`
+
+```powershell
+docker compose logs api --tail 200
+```
+
+Możliwe przyczyny: limit API, przeciążenie `429/503`, timeout, niedostępny model lub odpowiedź niezgodna ze schematem. Aplikacja ma retry i model awaryjny, ale długotrwałych problemów po stronie dostawcy nie da się całkowicie ukryć.
+
+### API nie startuje
+
+```powershell
+docker compose logs api
+docker compose exec api alembic current
+```
+
+Aktualna rewizja powinna wynosić `20260908_03`.
+
+### Port jest zajęty
+
+```env
+FRONTEND_PORT=5174
+API_PORT=8001
+POSTGRES_PORT=5434
+```
+
+### Frontend jest `unhealthy`
+
+```powershell
+docker compose logs frontend
+docker inspect studyflow-frontend-1
+```
+
+Healthcheck odpytuje Nginx pod `http://127.0.0.1/` wewnątrz kontenera.
+
+## Bezpieczeństwo i ograniczenia
+
+- nie commituj `.env`,
+- nie umieszczaj klucza Gemini w frontendzie,
+- użyj losowego `JWT_SECRET_KEY` i silnego hasła PostgreSQL,
+- ogranicz `CORS_ORIGINS` do własnej domeny,
+- przed publicznym wdrożeniem skonfiguruj HTTPS,
+- przed publicznym demo dodaj rate limiting i limit kosztów AI,
+- traktuj materiały AI jako pomoc, a nie gwarantowane źródło wiedzy.
+
+Projekt portfolio nie ma jeszcze refresh tokenów, unieważniania sesji, rate limitingu ani panelu administratora.
+
+## Legacy CLI
+
+Archiwalna wersja konsolowa znajduje się w `legacy_cli/`:
 
 ```powershell
 python -m legacy_cli.main
 ```
 
-Uruchomienie wersji legacy może utworzyć lokalny `data.json`, który jest
-ignorowany przez Git.
+Używa pliku JSON zamiast PostgreSQL i jest oddzielona od aplikacji webowej.
 
-## Znane ograniczenia
+## Plan rozwoju
 
-- projekt nie posiada jeszcze frontendu,
-- tokeny JWT nie mają jeszcze mechanizmu odświeżania ani unieważniania.
+- głosowy asystent w stylu „Jarvisa”,
+- chatbot korzystający z kontekstu postępów użytkownika,
+- quizy, fiszki i zadania generowane przez AI,
+- zapis planu AI bezpośrednio jako zadania w kalendarzu,
+- wyszukiwanie i usuwanie historii AI,
+- streaming odpowiedzi,
+- rate limiting i statystyki użycia,
+- refresh tokeny,
+- testy end-to-end frontendu.
 
-## Planowany rozwój
+## Licencja
 
-- sortowanie i bardziej rozbudowane filtrowanie,
-- frontend webowy,
-- moduł AI do generowania planów nauki i zadań,
-- testy integracyjne z PostgreSQL.
+Projekt został przygotowany jako aplikacja edukacyjna i portfolio. Przed wykorzystaniem w innym projekcie dodaj odpowiedni plik licencji i zasady użycia.

@@ -1,4 +1,4 @@
-import type { Page, Session, Subject, Task, Topic, User } from "./types";
+import type { AiMaterial, GeneratedNotes, GeneratedStudyPlan, Page, Session, Subject, Task, Topic, User } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api";
 let token = localStorage.getItem("studyflow_token");
@@ -35,6 +35,11 @@ export const api = {
   addTopic: (data: { name: string; subject_uid: string; difficulty: string }) => request<Topic>("/topics", { method: "POST", body: JSON.stringify(data) }),
   updateTopic: (id: string, data: Partial<Pick<Topic, "name" | "subject_uid" | "difficulty" | "is_done">>) => request<Topic>(`/topics/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTopic: (id: string) => request<void>(`/topics/${id}`, { method: "DELETE" }),
+  generateNotes: (id: string, data: { detail_level: "short" | "standard" | "detailed"; task_uid?: string | null; custom_goal?: string | null }) =>
+    request<GeneratedNotes>(`/ai/topics/${id}/notes`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
+  generatePlan: (id: string, data: { days: number; minutes_per_day: number; task_uid?: string | null; custom_goal?: string | null }) =>
+    request<GeneratedStudyPlan>(`/ai/topics/${id}/plan`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
+  aiMaterials: () => request<AiMaterial[]>("/ai/materials"),
   addTask: (data: { title: string; topic_uid: string; deadline: string | null; priority: string; notes?: string | null }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
   updateTask: (id: string, data: Partial<Task>) => request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),

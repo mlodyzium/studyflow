@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.middleware import log_requests
-from app.routers import auth, exam_results, study_sessions, subjects, tasks, topics, users
+from app.routers import ai, auth, exam_results, study_sessions, subjects, tasks, topics, users
 
 configure_logging(settings.log_level)
 
@@ -23,6 +23,7 @@ app.include_router(topics.router)
 app.include_router(tasks.router)
 app.include_router(study_sessions.router)
 app.include_router(exam_results.router)
+app.include_router(ai.router)
 
 @app.get("/health", tags=["system"])
 def health_check() -> dict[str, str]:

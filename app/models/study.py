@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.dialects.postgresql import ENUM as PostgreSQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.db.database import Base
@@ -84,3 +84,15 @@ class ExamResult(Base):
         CheckConstraint("score_percent BETWEEN 0 AND 100", name="score_percent_range"),
     )
     subject: Mapped["Subject"] = relationship(back_populates="exam_results")
+
+
+class AiMaterial(Base):
+    __tablename__ = "ai_materials"
+    material_uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.user_uid", ondelete="CASCADE"), index=True)
+    topic_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("topics.topic_uid", ondelete="CASCADE"), index=True)
+    task_uid: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.task_uid", ondelete="SET NULL"), nullable=True)
+    material_type: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(160))
+    content: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

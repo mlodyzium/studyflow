@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
 from app.main import app
+from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan
 
 
 @pytest.fixture()
@@ -160,3 +161,89 @@ def test_input_validation(client):
     assert client.post("/study-sessions", headers=headers, json={"subject_uid": subject["subject_uid"], "duration_minutes": -1}).status_code == 422
     assert client.post("/exam-results", headers=headers, json={"subject_uid": subject["subject_uid"], "score_percent": 101}).status_code == 422
     assert client.get("/subjects", headers=headers, params={"page": 0}).status_code == 422
+
+
+def test_ai_notes_require_authentication(client):
+    assert client.post(
+        "/ai/topics/00000000-0000-0000-0000-000000000001/notes",
+        json={},
+    ).status_code == 401
+
+
+def test_generate_notes_for_owned_topic(client, monkeypatch):
+    headers, _ = auth_headers(client)
+    subject = create_subject(client, headers)
+    topic = client.post(
+        "/topics",
+        headers=headers,
+        json={"name": "Równania kwadratowe", "subject_uid": subject["subject_uid"], "difficulty": "Średni"},
+    ).json()
+    captured = {}
+
+    async def fake_generate(**kwargs):
+        captured.update(kwargs)
+        return GeneratedNotes(**{
+            "title": "Równania kwadratowe — notatka",
+            "summary": "Najważniejsze informacje.",
+            "sections": [{"heading": "Definicja", "content": "Opis zagadnienia."}],
+            "key_points": ["Zapamiętaj deltę."],
+            "review_questions": ["Czym jest delta?"],
+        })
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", fake_generate)
+    response = client.post(
+        f"/ai/topics/{topic['topic_uid']}/notes",
+        headers=headers,
+        json={"language": "polski", "detail_level": "detailed"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sections"][0]["heading"] == "Definicja"
+    history = client.get("/ai/materials", headers=headers)
+    assert history.status_code == 200
+    assert history.json()[0]["material_type"] == "notes"
+    assert history.json()[0]["title"] == "Równania kwadratowe — notatka"
+    assert captured == {
+        "subject_name": "Matematyka",
+        "topic_name": "Równania kwadratowe",
+        "difficulty": "Średni",
+        "language": "polski",
+        "detail_level": "detailed",
+        "goal": None,
+    }
+
+
+def test_generate_study_plan_with_selected_task(client, monkeypatch):
+    headers, _ = auth_headers(client)
+    subject = create_subject(client, headers)
+    topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
+    task = client.post("/tasks", headers=headers, json={"title": "Przygotuj się do kartkówki", "topic_uid": topic["topic_uid"]}).json()
+    captured = {}
+
+    async def fake_plan(*args):
+        captured["args"] = args
+        return GeneratedStudyPlan(**{"title": "Plan", "overview": "Plan powtórki.", "steps": [{"day": 1, "title": "Podstawy", "objective": "Zrozumienie", "activities": ["Przeczytaj notatki"], "duration_minutes": 30}], "success_criteria": ["Rozwiązuję przykłady"]})
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    response = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers, json={"task_uid": task["task_uid"], "days": 5, "minutes_per_day": 30})
+    assert response.status_code == 200
+    assert response.json()["steps"][0]["day"] == 1
+    assert captured["args"][-1] == "Przygotuj się do kartkówki"
+
+
+def test_ai_notes_cannot_access_another_users_topic(client, monkeypatch):
+    first_headers, _ = auth_headers(client, "ai-owner")
+    second_headers, _ = auth_headers(client, "ai-stranger")
+    subject = create_subject(client, first_headers)
+    topic = client.post(
+        "/topics",
+        headers=first_headers,
+        json={"name": "Algebra", "subject_uid": subject["subject_uid"]},
+    ).json()
+
+    async def should_not_run(**kwargs):
+        raise AssertionError("Gemini should not be called")
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", should_not_run)
+    response = client.post(f"/ai/topics/{topic['topic_uid']}/notes", headers=second_headers, json={})
+    assert response.status_code == 404
