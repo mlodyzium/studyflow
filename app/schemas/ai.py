@@ -18,6 +18,7 @@ class NoteSection(BaseModel):
 
 
 class GeneratedNotes(BaseModel):
+    task_title: str = Field(min_length=1, max_length=120)
     title: str = Field(min_length=1, max_length=160)
     summary: str = Field(min_length=1, max_length=1200)
     sections: list[NoteSection] = Field(min_length=1, max_length=8)
@@ -42,10 +43,21 @@ class StudyPlanStep(BaseModel):
 
 
 class GeneratedStudyPlan(BaseModel):
+    task_title: str = Field(min_length=1, max_length=120)
     title: str = Field(min_length=1, max_length=160)
     overview: str = Field(min_length=1, max_length=1200)
     steps: list[StudyPlanStep] = Field(min_length=1, max_length=30)
     success_criteria: list[str] = Field(min_length=1, max_length=8)
+
+
+class SessionNoteGenerationRequest(BaseModel):
+    description: str = Field(min_length=3, max_length=1000)
+    language: str = Field(default="polski", min_length=2, max_length=30)
+
+
+class GeneratedSessionNote(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    notes: str = Field(min_length=1, max_length=3000)
 
 
 class AiMaterialRead(BaseModel):

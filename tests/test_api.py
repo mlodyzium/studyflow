@@ -183,6 +183,7 @@ def test_generate_notes_for_owned_topic(client, monkeypatch):
     async def fake_generate(**kwargs):
         captured.update(kwargs)
         return GeneratedNotes(**{
+            "task_title": "Nauka równań kwadratowych",
             "title": "Równania kwadratowe — notatka",
             "summary": "Najważniejsze informacje.",
             "sections": [{"heading": "Definicja", "content": "Opis zagadnienia."}],
@@ -203,6 +204,11 @@ def test_generate_notes_for_owned_topic(client, monkeypatch):
     assert history.status_code == 200
     assert history.json()[0]["material_type"] == "notes"
     assert history.json()[0]["title"] == "Równania kwadratowe — notatka"
+    created_tasks = client.get("/tasks", headers=headers).json()["items"]
+    assert len(created_tasks) == 1
+    assert created_tasks[0]["title"] == "Nauka równań kwadratowych"
+    assert "Zapamiętaj deltę" in created_tasks[0]["notes"]
+    assert history.json()[0]["task_uid"] == created_tasks[0]["task_uid"]
     assert captured == {
         "subject_name": "Matematyka",
         "topic_name": "Równania kwadratowe",
@@ -222,13 +228,16 @@ def test_generate_study_plan_with_selected_task(client, monkeypatch):
 
     async def fake_plan(*args):
         captured["args"] = args
-        return GeneratedStudyPlan(**{"title": "Plan", "overview": "Plan powtórki.", "steps": [{"day": 1, "title": "Podstawy", "objective": "Zrozumienie", "activities": ["Przeczytaj notatki"], "duration_minutes": 30}], "success_criteria": ["Rozwiązuję przykłady"]})
+        return GeneratedStudyPlan(**{"task_title": "Powtórka algebry", "title": "Plan", "overview": "Plan powtórki.", "steps": [{"day": 1, "title": "Podstawy", "objective": "Zrozumienie", "activities": ["Przeczytaj notatki"], "duration_minutes": 30}], "success_criteria": ["Rozwiązuję przykłady"]})
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
     response = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers, json={"task_uid": task["task_uid"], "days": 5, "minutes_per_day": 30})
     assert response.status_code == 200
     assert response.json()["steps"][0]["day"] == 1
     assert captured["args"][-1] == "Przygotuj się do kartkówki"
+    plans = client.get("/ai/materials", headers=headers, params={"task_uid": task["task_uid"]})
+    assert plans.status_code == 200
+    assert plans.json()[0]["task_uid"] == task["task_uid"]
 
 
 def test_ai_notes_cannot_access_another_users_topic(client, monkeypatch):

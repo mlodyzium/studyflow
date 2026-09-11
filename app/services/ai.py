@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.core.config import settings
 from pydantic import BaseModel
 
-from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan
+from app.schemas.ai import GeneratedNotes, GeneratedSessionNote, GeneratedStudyPlan
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@ async def generate_topic_notes(
         f"Język: {language}. Przedmiot: {subject_name}. Temat: {topic_name}. "
         f"Poziom trudności: {difficulty or 'nieokreślony'}. Notatka ma być {length_hint}. "
         f"Cel lub zadanie użytkownika: {goal or 'ogólne opanowanie tematu'}. "
+        "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cel nauki. "
         "Wyjaśniaj jasno, używaj przykładów tam, gdzie pomagają, i nie wymyślaj źródeł. "
         "Na końcu dodaj najważniejsze punkty oraz pytania do samodzielnej powtórki."
     )
@@ -97,6 +98,18 @@ async def generate_study_plan(subject_name: str, topic_name: str, difficulty: st
         f"Język: {language}. Przedmiot: {subject_name}. Temat: {topic_name}. "
         f"Poziom: {difficulty or 'nieokreślony'}. Cel lub zadanie: {goal or 'opanowanie całego tematu'}. "
         f"Plan ma obejmować {days} dni, maksymalnie {minutes_per_day} minut dziennie. "
+        "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cały cel planu. "
         "Każdy dzień powinien mieć konkretny cel, aktywności i czas. Ostatni etap powinien sprawdzać wiedzę."
     )
     return await _generate_structured(prompt, GeneratedStudyPlan)
+
+
+async def generate_session_note(description: str, language: str) -> GeneratedSessionNote:
+    prompt = (
+        "Uporządkuj krótki opis wykonanej nauki jako zwięzły zapis sesji. "
+        f"Język: {language}. Opis użytkownika: {description}. "
+        "Nadaj sesji krótki, konkretny tytuł. W polu notes napisz 2-5 zdań: "
+        "co zostało zrobione, czego się nauczono i — tylko jeśli wynika to z opisu — co warto zrobić dalej. "
+        "Nie dopisuj faktów, których użytkownik nie podał."
+    )
+    return await _generate_structured(prompt, GeneratedSessionNote)

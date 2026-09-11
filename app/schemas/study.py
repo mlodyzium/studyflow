@@ -89,6 +89,7 @@ class TaskRead(OrmSchema):
 
 class StudySessionCreate(BaseModel):
     subject_uid: UUID
+    title: str = Field(default="Sesja nauki", min_length=1, max_length=160)
     started_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
     notes: str | None = None
@@ -96,6 +97,7 @@ class StudySessionCreate(BaseModel):
     task_uid: UUID | None = None
 
 class StudySessionUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=160)
     subject_uid: UUID | None = None
     started_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
@@ -105,6 +107,7 @@ class StudySessionUpdate(BaseModel):
 
 class StudySessionRead(OrmSchema):
     study_uid: UUID
+    title: str
     subject_uid: UUID
     started_at: datetime
     duration_minutes: int | None

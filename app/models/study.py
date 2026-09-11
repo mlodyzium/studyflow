@@ -61,6 +61,7 @@ class Task(Base):
 class StudySession(Base):
     __tablename__ = "study_sessions"
     study_uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(160), default="Sesja nauki")
     subject_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.subject_uid", ondelete="CASCADE"))
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
