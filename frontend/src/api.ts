@@ -39,11 +39,12 @@ export const api = {
     request<GeneratedNotes>(`/ai/topics/${id}/notes`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
   generatePlan: (id: string, data: { days: number; minutes_per_day: number; task_uid?: string | null; custom_goal?: string | null }) =>
     request<GeneratedStudyPlan>(`/ai/topics/${id}/plan`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
-  aiMaterials: () => request<AiMaterial[]>("/ai/materials"),
+  aiMaterials: (taskId?: string) => request<AiMaterial[]>(`/ai/materials${taskId ? `?task_uid=${taskId}` : ""}`),
   addTask: (data: { title: string; topic_uid: string; deadline: string | null; priority: string; notes?: string | null }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
   updateTask: (id: string, data: Partial<Task>) => request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
-  addSession: (data: { subject_uid: string; topic_uid?: string | null; task_uid?: string | null; duration_minutes: number; notes: string | null }) => request<Session>("/study-sessions", { method: "POST", body: JSON.stringify(data) }),
+  addSession: (data: { title: string; subject_uid: string; topic_uid?: string | null; task_uid?: string | null; duration_minutes: number; notes: string | null }) => request<Session>("/study-sessions", { method: "POST", body: JSON.stringify(data) }),
   deleteSession: (id: string) => request<void>(`/study-sessions/${id}`, { method: "DELETE" }),
-  updateSession: (id: string, data: { subject_uid?: string; topic_uid?: string | null; task_uid?: string | null; duration_minutes?: number; notes?: string | null }) => request<Session>(`/study-sessions/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  updateSession: (id: string, data: { title?: string; subject_uid?: string; topic_uid?: string | null; task_uid?: string | null; duration_minutes?: number; notes?: string | null }) => request<Session>(`/study-sessions/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  generateSessionNote: (description: string) => request<import("./types").GeneratedSessionNote>("/ai/session-note", { method: "POST", body: JSON.stringify({ description, language: "polski" }) }),
 };

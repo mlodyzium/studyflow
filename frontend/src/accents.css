@@ -1,0 +1,611 @@
+:root {
+  --accent: #c8f05a;
+  --accent-soft: #edf6d5;
+  --accent-ink: #526d16;
+  --accent-glow: #c8f05a35;
+}
+
+:root[data-accent="violet"] { --accent:#a78bfa; --accent-soft:#eee9ff; --accent-ink:#6246a8; --accent-glow:#a78bfa38; }
+:root[data-accent="pink"] { --accent:#f472b6; --accent-soft:#fde7f3; --accent-ink:#a83f77; --accent-glow:#f472b638; }
+:root[data-accent="blue"] { --accent:#60a5fa; --accent-soft:#e2efff; --accent-ink:#2868ad; --accent-glow:#60a5fa38; }
+:root[data-accent="graphite"] { --accent:#94a3b8; --accent-soft:#e8edf2; --accent-ink:#526174; --accent-glow:#94a3b838; }
+
+:root[data-accent] {
+  --lime: var(--accent);
+}
+
+.accent-picker {
+  position: fixed;
+  z-index: 22;
+  left: 257px;
+  bottom: 22px;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid #303631;
+  border-radius: 13px;
+  background: #181c19;
+  color: #fff;
+}
+
+.accent-picker-options {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 5px 5px 4px;
+}
+
+.accent-picker-options button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.accent-picker-options button:hover,
+.accent-picker-options button.active {
+  border-color: #fff8;
+  transform: translateY(-1px);
+}
+
+.accent-picker-options button i {
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  background: var(--swatch);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--swatch) 45%, transparent);
+}
+
+.accent-picker-options button svg {
+  position: absolute;
+  width: 12px;
+  color: #111;
+  stroke-width: 3;
+}
+
+.accent-picker-trigger {
+  display: grid;
+  grid-template-columns: 22px 1fr 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #d7ddd8;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.accent-picker-trigger:hover { background:#ffffff0b; }
+.accent-picker-trigger > i { width:18px;height:18px;border-radius:6px;background:var(--swatch);box-shadow:0 3px 10px color-mix(in srgb,var(--swatch) 38%,transparent); }
+.accent-picker-trigger > svg { width:15px;transition:transform .2s;color:#9ba39c; }
+.accent-picker.open .accent-picker-trigger > svg { transform:rotate(180deg); }
+
+.brand-mark,
+.done .check,
+.light-button,
+.primary,
+.floating-session,
+.ai-assistant > header > span,
+.dashboard-ai > span {
+  background: var(--accent) !important;
+  color: #172011;
+}
+
+.dot,
+.sidebar nav button.active svg,
+.side-focus span,
+.hero h2 em,
+.hero-ring .progress,
+.detail-grid svg {
+  color: var(--accent);
+  stroke: var(--accent);
+}
+
+.ai-summary {
+  border-left-color: var(--accent) !important;
+}
+
+.session-note-count,
+.ai-plan-count,
+.session-ai-button,
+.ai-plan-steps article > span {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+input:focus,
+textarea:focus {
+  outline-color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .accent-picker { display:none; left:20px; bottom:92px; width:min(240px,calc(84vw - 40px)); }
+  .accent-picker.mobile-open { display:block; }
+}
+
+/* Complete accent skin: legacy components used fixed lime shades. */
+.app-shell {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, #f4f5f1), #f7f8f3 52%, color-mix(in srgb, var(--accent) 7%, #f1f3ee)) !important;
+}
+
+.app-shell::before {
+  background: radial-gradient(circle, var(--accent-glow) 0%, color-mix(in srgb, var(--accent) 8%, transparent) 38%, transparent 70%) !important;
+}
+
+.app-shell::after {
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent) 0%, color-mix(in srgb, var(--accent) 6%, transparent) 43%, transparent 70%) !important;
+}
+
+.ambient-mark i,
+.ambient-two i {
+  border-color: var(--accent) !important;
+}
+
+.hero::before,
+.orb-one,
+.orb-two {
+  background: color-mix(in srgb, var(--accent) 12%, transparent) !important;
+}
+
+.dashboard-ai {
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 13%, #191d1a), color-mix(in srgb, var(--accent) 24%, #242a25)) !important;
+  box-shadow: 0 16px 42px var(--accent-glow) !important;
+}
+
+.dashboard-ai small,
+.ai-assistant > header small,
+.ai-notes-head small,
+.ai-mode-grid span,
+.ai-mode-grid > button > svg,
+.ai-ready > svg,
+.more-topics,
+.scope-bar button,
+.task-main:hover strong,
+.session-list > article:hover .session-body h3,
+.subject-link .date svg,
+.empty svg,
+.add-card svg {
+  color: var(--accent-ink) !important;
+}
+
+.stat-icon,
+.mint,
+.violet,
+.orange,
+.subject-letter,
+.subject-letter.c1,
+.subject-letter.c2,
+.subject-letter.c3,
+.ai-history-modal > header > span,
+.ai-history-layout > aside > button > span,
+.session-note-date {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+}
+
+.stats article:hover,
+.subject-card:hover,
+.topic-card:hover,
+.ai-mode-grid > button:hover {
+  border-color: color-mix(in srgb, var(--accent) 70%, #fff) !important;
+  box-shadow: 0 16px 40px var(--accent-glow) !important;
+}
+
+.ai-notes-head > span {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #333)) !important;
+}
+
+.ai-button,
+.floating-ai,
+.scope-bar,
+.selected-day-head > button,
+.calendar-open,
+.related-session-actions > strong,
+.task-ai-columns > section,
+.task-plan-success,
+.ai-history-layout > aside > button:hover,
+.ai-history-layout > aside > button.active,
+.select-options button.selected,
+.calendar-day.selected,
+.dashboard-calendar .mini-calendar-grid button.selected {
+  background: var(--accent-soft) !important;
+  border-color: color-mix(in srgb, var(--accent) 55%, #fff) !important;
+  color: var(--accent-ink) !important;
+}
+
+.ai-mode-grid > button:hover,
+.topic-card.focused,
+.calendar-day.selected {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+.topic-chip:hover,
+.date-field input::-webkit-calendar-picker-indicator:hover,
+.calendar-day.selected > span {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+}
+
+.auth-card input:focus,
+.modal input:focus,
+.modal select:focus,
+.modal textarea:focus,
+.date-field:focus-within,
+.select-trigger:hover,
+.date-trigger:hover,
+.custom-select.open .select-trigger,
+.date-picker.open .date-trigger {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 4px var(--accent-glow) !important;
+}
+
+.progress-stat > div > i,
+.topic-progress i {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #333), var(--accent)) !important;
+  box-shadow: 0 0 12px var(--accent-glow) !important;
+}
+
+.sidebar nav button > span,
+.welcome-screen span,
+.mini-calendar-grid i.today {
+  background: var(--accent) !important;
+  box-shadow: 0 5px 16px var(--accent-glow) !important;
+}
+
+.profile > span {
+  background: color-mix(in srgb, var(--accent) 72%, #25272a) !important;
+}
+
+.auth-page .switch button,
+.auth-page .brand .dot,
+.auth-page .eyebrow,
+.auth-page .eyebrow span {
+  color: var(--accent-ink) !important;
+}
+
+.auth-page .eyebrow span {
+  background: var(--accent) !important;
+}
+
+.auth-page .auth-card input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 4px var(--accent-glow) !important;
+}
+
+:root[data-theme="dark"] .auth-page .switch button,
+:root[data-theme="dark"] .auth-page .brand .dot,
+:root[data-theme="dark"] .auth-page .eyebrow {
+  color: color-mix(in srgb, var(--accent) 68%, #fff) !important;
+}
+
+:root[data-theme="dark"] .app-shell {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, #0d100f), #111511 55%, color-mix(in srgb, var(--accent) 4%, #0c0f0d)) !important;
+}
+
+:root[data-theme="dark"] .app-shell::before,
+:root[data-theme="dark"] .app-shell::after {
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 19%, transparent) 0%, color-mix(in srgb, var(--accent) 6%, transparent) 44%, transparent 72%) !important;
+}
+
+:root[data-theme="dark"] .ai-summary,
+:root[data-theme="dark"] .task-ai-columns > section,
+:root[data-theme="dark"] .task-plan-success,
+:root[data-theme="dark"] .selected-day-head > button,
+:root[data-theme="dark"] .calendar-open,
+:root[data-theme="dark"] .related-session-actions > strong {
+  background: color-mix(in srgb, var(--accent) 16%, #171b18) !important;
+  color: color-mix(in srgb, var(--accent) 65%, #fff) !important;
+}
+
+/* Detail pages */
+.detail-hero,
+.topic-detail-hero,
+.task-detail-hero,
+.session-detail-hero {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, #151917), color-mix(in srgb, var(--accent) 19%, #222923)) !important;
+  box-shadow: 0 25px 68px color-mix(in srgb, var(--accent) 18%, transparent) !important;
+}
+
+.detail-hero.completed,
+.topic-detail-hero.completed,
+.task-detail-hero.completed {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 28%, #151917), color-mix(in srgb, var(--accent) 43%, #202620)) !important;
+  outline: 1px solid color-mix(in srgb, var(--accent) 40%, transparent) !important;
+}
+
+.detail-hero .primary {
+  background: var(--accent) !important;
+  color: #151914 !important;
+}
+
+.completion-button.completed {
+  background: var(--accent) !important;
+  border-color: color-mix(in srgb, var(--accent) 72%, #fff) !important;
+  color: #151914 !important;
+  box-shadow: 0 9px 25px var(--accent-glow) !important;
+}
+
+.completion-button.completed > span {
+  background: color-mix(in srgb, var(--accent) 42%, #111) !important;
+  border-color: color-mix(in srgb, var(--accent) 42%, #111) !important;
+}
+
+.completion-button.completed > span svg {
+  color: #fff !important;
+}
+
+.topic-detail-stats strong,
+.task-ai-note h4,
+.task-plan-success h4,
+.task-ai-materials .task-plan-body article > span,
+.session-date,
+.session-time,
+.task-session-cards div > small,
+.session-note-date,
+.task-session-notes-empty svg {
+  color: var(--accent-ink) !important;
+}
+
+.detail-grid article,
+.detail-notes,
+.task-ai-materials,
+.task-session-notes,
+.task-sessions-overview {
+  border-color: color-mix(in srgb, var(--accent) 16%, var(--line)) !important;
+}
+
+.detail-grid article:hover,
+.task-session-cards > button:hover,
+.task-session-note-list > button:hover,
+.task-ai-materials details[open] {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line)) !important;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 12%, transparent) !important;
+}
+
+.task-ai-materials summary > svg,
+.task-session-cards > button > svg,
+.task-session-note-list > button > svg {
+  color: var(--accent-ink) !important;
+}
+
+.task-ai-note p,
+.task-ai-note li,
+.task-plan-success li,
+.task-ai-materials .task-plan-body article p,
+.task-ai-materials .task-plan-body article li,
+.detail-notes p,
+.task-session-cards p,
+.task-session-note-list p {
+  color: #545d56 !important;
+}
+
+:root[data-theme="dark"] .topic-detail-stats strong,
+:root[data-theme="dark"] .task-ai-note h4,
+:root[data-theme="dark"] .task-plan-success h4,
+:root[data-theme="dark"] .task-ai-materials .task-plan-body article > span,
+:root[data-theme="dark"] .session-date,
+:root[data-theme="dark"] .session-time,
+:root[data-theme="dark"] .task-session-cards div > small,
+:root[data-theme="dark"] .session-note-date,
+:root[data-theme="dark"] .task-session-notes-empty svg,
+:root[data-theme="dark"] .task-ai-materials summary > svg {
+  color: color-mix(in srgb, var(--accent) 64%, #fff) !important;
+}
+
+:root[data-theme="dark"] .task-ai-note p,
+:root[data-theme="dark"] .task-ai-note li,
+:root[data-theme="dark"] .task-plan-success li,
+:root[data-theme="dark"] .task-ai-materials .task-plan-body article p,
+:root[data-theme="dark"] .task-ai-materials .task-plan-body article li,
+:root[data-theme="dark"] .detail-notes p,
+:root[data-theme="dark"] .task-session-cards p,
+:root[data-theme="dark"] .task-session-note-list p {
+  color: #c4cbc5 !important;
+}
+
+:root[data-theme="dark"] .detail-grid article,
+:root[data-theme="dark"] .detail-notes,
+:root[data-theme="dark"] .task-ai-materials,
+:root[data-theme="dark"] .task-session-notes,
+:root[data-theme="dark"] .task-sessions-overview {
+  border-color: color-mix(in srgb, var(--accent) 20%, #303731) !important;
+}
+
+/* Remaining legacy lime tokens across sessions, calendars, topics and AI. */
+.session-date,
+.session-note-date,
+.related-sessions > .panel-head > strong,
+.related-session-actions > strong,
+.ai-plan-count,
+.ai-history-modal > header > span,
+.ai-history-layout > aside > button > span,
+.ai-plan-steps article > span,
+.task-ai-columns > section,
+.task-plan-success,
+.scope-bar,
+.calendar-day.selected,
+.dashboard-calendar .mini-calendar-grid button.selected {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+}
+
+.session-summary article > svg,
+.session-time,
+.session-date,
+.session-note-date,
+.topic-state svg,
+.topic-detail-stats strong,
+.detail-grid svg,
+.task-ai-note h4,
+.task-plan-success h4,
+.task-ai-materials .task-plan-body article > span,
+.ai-ready > svg,
+.ai-mode-grid > button > svg,
+.ai-mode-grid span,
+.ai-notes-head small,
+.ai-history-modal > header small,
+.empty svg,
+.add-card svg,
+.subject-link .date svg,
+.more-topics,
+.scope-bar button,
+.text-button:hover,
+.calendar-open,
+.selected-day-head > button {
+  color: var(--accent-ink) !important;
+}
+
+.select-trigger > svg,
+.date-trigger > svg,
+.topic-filter-bar .select-trigger > svg,
+.tasks-toolbar .select-trigger > svg,
+.section-toolbar .select-trigger > svg,
+.custom-select .select-trigger > svg {
+  color: var(--accent-ink) !important;
+  stroke: var(--accent-ink) !important;
+}
+
+.check:hover,
+.related-session-list > button:hover,
+.task-session-cards > button:hover,
+.task-session-note-list > button:hover,
+.ai-mode-grid > button:hover,
+.topic-card.focused,
+.calendar-day.selected,
+.dashboard-calendar .mini-calendar-grid button.selected {
+  border-color: var(--accent) !important;
+}
+
+.calendar-day.selected > span,
+.mini-calendar-grid i.today,
+.tour-dots i.active,
+.event-dot:not(.high):not(.low):not(.exam) {
+  background: var(--accent) !important;
+  color: #151914 !important;
+}
+
+.tour-art {
+  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #fff)) !important;
+  box-shadow: 0 15px 35px var(--accent-glow) !important;
+}
+
+.ai-note-content .ai-summary,
+.ai-result .ai-summary,
+.task-ai-materials .task-plan-body > .ai-summary {
+  background: color-mix(in srgb, var(--accent) 10%, #fff) !important;
+  border-left-color: var(--accent) !important;
+  color: #4e5750 !important;
+}
+
+.ai-button:hover,
+.topic-chip:hover,
+.date-field input::-webkit-calendar-picker-indicator:hover {
+  background: color-mix(in srgb, var(--accent) 18%, #fff) !important;
+}
+
+:root[data-theme="dark"] .session-date,
+:root[data-theme="dark"] .session-note-date,
+:root[data-theme="dark"] .related-sessions > .panel-head > strong,
+:root[data-theme="dark"] .related-session-actions > strong,
+:root[data-theme="dark"] .scope-bar,
+:root[data-theme="dark"] .calendar-day.selected,
+:root[data-theme="dark"] .dashboard-calendar .mini-calendar-grid button.selected,
+:root[data-theme="dark"] .ai-history-layout > aside > button.active,
+:root[data-theme="dark"] .ai-history-layout > aside > button:hover {
+  background: color-mix(in srgb, var(--accent) 16%, #171b18) !important;
+  color: color-mix(in srgb, var(--accent) 64%, #fff) !important;
+}
+
+:root[data-theme="dark"] .session-summary article > svg,
+:root[data-theme="dark"] .session-time,
+:root[data-theme="dark"] .topic-detail-stats strong,
+:root[data-theme="dark"] .topic-state svg,
+:root[data-theme="dark"] .detail-grid svg,
+:root[data-theme="dark"] .ai-ready > svg,
+:root[data-theme="dark"] .ai-mode-grid > button > svg,
+:root[data-theme="dark"] .ai-mode-grid span,
+:root[data-theme="dark"] .ai-notes-head small,
+:root[data-theme="dark"] .ai-history-modal > header small {
+  color: color-mix(in srgb, var(--accent) 66%, #fff) !important;
+}
+
+:root[data-theme="dark"] .select-trigger > svg,
+:root[data-theme="dark"] .date-trigger > svg,
+:root[data-theme="dark"] .custom-select .select-trigger > svg {
+  color: color-mix(in srgb, var(--accent) 66%, #fff) !important;
+  stroke: color-mix(in srgb, var(--accent) 66%, #fff) !important;
+}
+
+:root[data-theme="dark"] .ai-note-content .ai-summary,
+:root[data-theme="dark"] .ai-result .ai-summary,
+:root[data-theme="dark"] .task-ai-materials .task-plan-body > .ai-summary {
+  background: color-mix(in srgb, var(--accent) 13%, #171b18) !important;
+  color: #d7ddd8 !important;
+}
+
+/* Smooth palette expansion and full-theme color transition. */
+.accent-picker-options {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-7px) scale(.97);
+  transform-origin: top center;
+  pointer-events: none;
+  transition: max-height .28s cubic-bezier(.2,.8,.2,1),opacity .2s ease,transform .28s cubic-bezier(.2,.8,.2,1),padding .28s ease;
+}
+
+.accent-picker.open .accent-picker-options {
+  max-height: 48px;
+  padding-top: 5px;
+  padding-bottom: 4px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.accent-picker-options button {
+  opacity: 0;
+  transform: translateY(-5px) scale(.85);
+  transition: opacity .18s ease,transform .24s cubic-bezier(.2,1.35,.4,1),border-color .2s ease,background .2s ease;
+}
+
+.accent-picker.open .accent-picker-options button { opacity:1;transform:none; }
+.accent-picker.open .accent-picker-options button:nth-child(2){transition-delay:.025s}.accent-picker.open .accent-picker-options button:nth-child(3){transition-delay:.05s}.accent-picker.open .accent-picker-options button:nth-child(4){transition-delay:.075s}.accent-picker.open .accent-picker-options button:nth-child(5){transition-delay:.1s}
+.accent-picker-options button:hover{transform:translateY(-2px) scale(1.08)!important}.accent-picker-options button.active{transform:scale(1.05)}
+.accent-picker-trigger>i{transition:background-color .4s ease,box-shadow .4s ease,transform .25s ease}.accent-picker.open .accent-picker-trigger>i{transform:rotate(8deg) scale(1.08)}
+
+.accent-changing body,.accent-changing .app-shell,.accent-changing .sidebar,.accent-changing .panel,.accent-changing .primary,.accent-changing .light-button,.accent-changing .stat-icon,.accent-changing .subject-letter,.accent-changing .session-date,.accent-changing .detail-hero,.accent-changing .detail-grid article,.accent-changing .detail-notes,.accent-changing .ai-assistant,.accent-changing .ai-summary,.accent-changing .dashboard-ai,.accent-changing .calendar-day,.accent-changing .scope-bar,.accent-changing svg,.accent-changing strong,.accent-changing h3,.accent-changing h4{transition:background-color .42s ease,background .42s ease,color .38s ease,border-color .38s ease,box-shadow .42s ease,stroke .38s ease!important}
+
+@media(prefers-reduced-motion:reduce){.accent-picker-options,.accent-picker-options button,.accent-picker-trigger>i,.accent-changing *{transition:none!important}}
+
+.sidebar .accent-picker-options{gap:4px}.sidebar .accent-picker-options button{width:27px;height:29px}.custom-accent{position:relative;display:grid;place-items:center;width:29px;height:29px;flex:none;border:2px solid transparent;border-radius:9px;overflow:hidden;cursor:pointer;opacity:0;transform:translateY(-5px) scale(.85);transition:opacity .18s .12s ease,transform .24s .12s cubic-bezier(.2,1.35,.4,1),border-color .2s ease}.accent-picker.open .custom-accent{opacity:1;transform:none}.custom-accent:hover,.custom-accent.active{border-color:#fff8;transform:translateY(-2px) scale(1.08)!important}.custom-accent input{position:absolute;inset:-8px;width:45px;height:45px;padding:0;border:0;opacity:0;cursor:pointer}.custom-accent>span{position:absolute;inset:3px;border-radius:5px;background:conic-gradient(from 30deg,#f472b6,#a78bfa,#60a5fa,#c8f05a,#f7b955,#f472b6)}.custom-accent>svg{position:relative;width:12px;color:#fff;filter:drop-shadow(0 1px 2px #0008);pointer-events:none}.custom-accent.active>span{background:var(--swatch)}
+
+/* Palette lives in the sidebar directly below the light/dark toggle. */
+.sidebar .side-focus{order:3}.sidebar .theme-toggle{order:4}.sidebar .accent-picker{position:relative;left:auto;bottom:auto;order:5;width:100%;margin-top:8px;flex:none}.sidebar .profile{order:6}
+
+@media(max-width:760px){.sidebar .accent-picker{display:block;left:auto;bottom:auto;width:100%}}
+
+.tour-backdrop.tour-v2{background:transparent;backdrop-filter:none}.tour-backdrop.tour-v2::before{background:#0b0e0c42;backdrop-filter:none}
+
+/* Guided first-login tour */
+.tour-v2{background:transparent;pointer-events:none;place-items:end;padding:28px}.tour-v2::before{content:"";position:fixed;inset:0;background:#0b0e0c80;backdrop-filter:blur(2px);animation:tourShadeIn .35s ease;pointer-events:none}.tour-v2 .tour-card{position:relative;z-index:130;width:min(410px,calc(100vw - 40px));padding:30px;pointer-events:auto;animation:tourCardIn .38s cubic-bezier(.2,.85,.25,1)}.tour-v2.center{place-items:center}.tour-v2.left{place-items:end start}.tour-v2.right{place-items:end}.tour-v2 .tour-art{width:52px;height:52px;margin:0 0 16px;border-radius:16px}.tour-v2 .tour-art svg{width:22px}.tour-v2 .tour-card>p{min-height:0;margin-bottom:18px}.tour-progress{height:5px;border-radius:999px;background:#e4e8e1;overflow:hidden;margin:18px 0}.tour-progress>i{display:block;height:100%;border-radius:inherit;background:var(--accent);box-shadow:0 0 12px var(--accent-glow);transition:width .4s cubic-bezier(.2,.8,.2,1)}.tour-actions{display:flex;justify-content:flex-end;gap:9px}.tour-actions .primary,.tour-actions .secondary{min-width:120px}.tour-v2 .skip-tour{display:block;margin:12px auto 0}.tour-highlight{position:relative;z-index:125!important;outline:3px solid var(--accent)!important;outline-offset:7px;box-shadow:0 0 0 10px color-mix(in srgb,var(--accent) 18%,transparent),0 22px 70px #0005!important;animation:tourHighlightIn .48s cubic-bezier(.2,.9,.25,1),tourHighlightPulse 2.2s ease-in-out .5s infinite!important}.floating-ai.tour-highlight,.theme-toggle.tour-highlight{z-index:125!important}.tour-highlight *{pointer-events:none}
+
+@keyframes tourShadeIn{from{opacity:0}to{opacity:1}}@keyframes tourCardIn{from{opacity:0;transform:translateY(22px) scale(.96)}to{opacity:1;transform:none}}@keyframes tourHighlightIn{from{outline-color:transparent;transform:scale(.985)}to{outline-color:var(--accent);transform:none}}@keyframes tourHighlightPulse{0%,100%{filter:none}50%{filter:brightness(1.04)}}
+
+:root[data-theme="dark"] .tour-progress{background:#303630}
+
+@media(max-width:760px){.tour-v2,.tour-v2.left,.tour-v2.right{place-items:end center;padding:14px}.tour-v2 .tour-card{padding:24px 21px}.tour-actions .primary,.tour-actions .secondary{min-width:0;flex:1}.tour-highlight{outline-offset:3px}}
+@media(prefers-reduced-motion:reduce){.tour-v2::before,.tour-v2 .tour-card,.tour-highlight{animation:none!important}.tour-progress>i{transition:none}}

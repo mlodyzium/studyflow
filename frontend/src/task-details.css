@@ -1,0 +1,239 @@
+.task-detail-view > .detail-page > .detail-notes {
+  display: none;
+}
+
+.task-session-notes {
+  max-width: 930px;
+  margin: 18px 0;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.task-session-notes .panel-head {
+  margin-bottom: 16px;
+}
+
+.task-session-notes .panel-head h3 {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.session-note-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #edf6d5;
+  color: #657d24;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.session-note-count svg {
+  width: 15px;
+}
+
+.task-session-note-list {
+  display: grid;
+  gap: 10px;
+}
+
+.task-session-note-list > button {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fafbf8;
+  color: inherit;
+  text-align: left;
+  transition: 0.2s;
+}
+
+.task-session-note-list > button:hover {
+  border-color: #aac94e;
+  transform: translateY(-1px);
+}
+
+.session-note-date {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  border-radius: 11px;
+  background: #eaf3d3;
+  color: #627a25;
+}
+
+.session-note-date b {
+  font-size: 17px;
+}
+
+.session-note-date small {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.task-session-note-list p {
+  margin: 0 0 7px;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.task-session-note-list div > small {
+  color: #7c847d;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.task-session-note-list > button > svg {
+  width: 18px;
+  color: #83909a;
+}
+
+.task-session-notes-empty {
+  display: grid;
+  place-items: center;
+  padding: 35px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.task-session-notes-empty svg {
+  width: 28px;
+  color: #819e31;
+}
+
+.task-session-notes-empty p {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.task-session-notes-empty small {
+  color: #7c847d;
+  font-size: 11px;
+}
+
+.ai-assistant-v2 .ai-form-grid label:nth-child(3)::after,
+.ai-assistant-v2 .ai-form-grid label:nth-child(4)::after {
+  content: none;
+}
+
+:root[data-theme="dark"] .task-session-notes {
+  background: #171b18;
+}
+
+:root[data-theme="dark"] .task-session-note-list > button {
+  background: #111512;
+}
+
+@media (max-width: 600px) {
+  .task-session-notes {
+    padding: 19px;
+  }
+
+  .task-session-note-list > button {
+    grid-template-columns: 44px 1fr;
+  }
+
+  .task-session-note-list > button > svg {
+    display: none;
+  }
+}
+
+.task-detail-view > .detail-page .related-sessions {
+  display: none;
+}
+
+.task-sessions-overview {
+  max-width: 930px;
+  margin: 18px 0;
+  padding: 24px;
+}
+
+.task-session-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.task-session-cards > button {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fafbf8;
+  color: inherit;
+  text-align: left;
+}
+
+.task-session-cards h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.task-session-cards div > small {
+  color: #71852f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.task-session-cards p {
+  max-width: 690px;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: #717872;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-session-cards > button > svg {
+  width: 18px;
+}
+
+.session-ai-fields {
+  display: grid;
+  gap: 13px;
+}
+
+.session-ai-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1px solid #a7c653;
+  border-radius: 11px;
+  background: #eff7dc;
+  color: #536b18;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.session-ai-button svg {
+  width: 17px;
+}
+
+:root[data-theme="dark"] .task-session-cards > button {
+  background: #111512;
+}
+
+:root[data-theme="dark"] .session-ai-button {
+  background: #26331b;
+  color: #d8eca5;
+}
