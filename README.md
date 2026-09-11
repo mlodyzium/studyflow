@@ -14,11 +14,15 @@ Projekt zawiera responsywny frontend React, REST API w FastAPI, bazę PostgreSQL
 - tematy przypisane do przedmiotów,
 - zadania z terminem, priorytetem, statusem i prywatną notatką,
 - filtrowanie zadań po przedmiocie, temacie, statusie i priorytecie,
-- sesje nauki z czasem, notatką i powiązaniem z wybranym zasobem,
+- sesje nauki z własnym tytułem, czasem, notatką i powiązaniem z wybranym zasobem,
+- generator AI, który z kilku słów tworzy tytuł i uporządkowaną notatkę z sesji,
 - historia sesji i licznik kolejnych dni nauki,
 - kalendarz z egzaminami oraz terminami zadań,
 - dashboard z postępem, najbliższymi zadaniami i aktywnymi przedmiotami,
 - jasny i ciemny motyw,
+- pięć gotowych kolorów interfejsu oraz możliwość wybrania własnego koloru z palety,
+- płynne przejścia pomiędzy motywami i zapamiętywanie ustawień w przeglądarce,
+- animowany, dziewięciokrokowy samouczek uruchamiany po rejestracji,
 - responsywny interfejs desktopowy i mobilny.
 
 ### Asystent AI
@@ -28,14 +32,15 @@ Asystent wykorzystuje Gemini i oferuje dwa tryby:
 - **Notatka** — podsumowanie, sekcje tematyczne, najważniejsze punkty i pytania kontrolne.
 - **Plan nauki** — harmonogram rozłożony na dni, z celami, aktywnościami i czasem pracy.
 
-Przed generowaniem użytkownik wybiera rodzaj materiału, przedmiot, temat oraz opcjonalnie istniejące zadanie albo własny cel. Dla notatki można ustawić poziom szczegółowości, a dla planu liczbę dni i czas nauki dziennie.
+Przed generowaniem użytkownik wybiera rodzaj materiału i przedmiot. Pola tematu oraz zadania działają jako „wybierz albo wpisz”: można wskazać istniejący element lub wpisać nowy. Nowa nazwa tematu tworzy temat automatycznie, a własny opis celu powoduje utworzenie zadania z krótkim tytułem dobranym przez AI. Dla notatki można ustawić poziom szczegółowości, a dla planu liczbę dni i czas nauki dziennie.
 
 Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania. Każdy poprawny wynik jest automatycznie zapisywany w PostgreSQL i dostępny później przez **Historia materiałów** na dashboardzie.
 
 Materiały są również wiązane z zadaniami:
 
-- wygenerowana notatka trafia bezpośrednio do pola notatki wybranego zadania,
-- plan nauki pojawia się jako osobny kafel w szczegółach zadania,
+- wygenerowana notatka pojawia się w czytelnej sekcji **Materiały AI** w szczegółach zadania,
+- plan nauki pojawia się w tej samej sekcji jako rozwijany, przypisany do zadania materiał,
+- szczegóły zadania pokazują oddzielnie notatki ze wszystkich powiązanych sesji nauki,
 - jeśli użytkownik nie wybierze istniejącego zadania, StudyFlow automatycznie tworzy nowe zadanie z krótkim tytułem zaproponowanym przez AI.
 
 Backend AI:
@@ -46,6 +51,30 @@ Backend AI:
 - ponawia wybrane zapytania i korzysta z modelu awaryjnego,
 - weryfikuje własność tematu oraz zadania,
 - zapisuje wyniki oddzielnie dla każdego użytkownika.
+
+### AI w sesjach nauki
+
+Podczas dodawania lub edycji sesji można wpisać krótki opis wykonanej pracy, np. `10 zadań z równań i powtórka wzorów`. Przycisk **Utwórz tytuł i notatkę z AI** wysyła opis do API, a Gemini zwraca:
+
+- krótki i czytelny tytuł sesji,
+- uporządkowaną notatkę opisującą wykonaną pracę,
+- ewentualną sugestię kolejnego kroku, wyłącznie jeśli wynika z opisu.
+
+Wynik można poprawić przed zapisaniem. Sesje są widoczne w historii, szczegółach sesji oraz na kaflu **Sesje tego zadania**. Można je edytować i usuwać z potwierdzeniem.
+
+## Motywy i personalizacja
+
+StudyFlow rozdziela tryb jasny/ciemny od koloru przewodniego. Użytkownik może niezależnie wybrać:
+
+- tryb jasny albo ciemny,
+- limonkowy, fioletowy, różowy, niebieski lub grafitowy wariant,
+- dowolny własny kolor z systemowej palety barw.
+
+Wybrany kolor obejmuje cały interfejs: dashboard, przyciski, formularze, filtry, kalendarz, sesje, strony szczegółów, materiały AI, obramowania, poświaty i gradient podążający za kursorem. Aplikacja automatycznie wylicza jaśniejsze tła oraz kontrastowe kolory tekstu. Zmiana jest animowana, a ustawienia są przechowywane w `localStorage`.
+
+## Samouczek pierwszego logowania
+
+Po rejestracji i pierwszym zalogowaniu uruchamia się interaktywny samouczek. W dziewięciu krokach automatycznie przełącza widoki, przewija stronę i podświetla omawiany element. Obejmuje dashboard, przedmioty, tematy, zadania, sesje, kalendarz, Asystenta AI oraz personalizację motywu. Można cofać kroki, przechodzić dalej albo pominąć całość. Samouczek nie uruchamia się ponownie podczas zwykłego logowania.
 
 ## Technologie
 
@@ -197,7 +226,8 @@ Plik `.env` zawiera sekrety, jest ignorowany przez Git i nie powinien być publi
 3. Dodaj przedmiot, np. „Matematyka”.
 4. Dodaj temat, np. „Równania kwadratowe”.
 5. Dodaj zadanie lub otwórz Asystenta AI.
-6. Zapisuj sesje nauki, aby dashboard liczył czas i serię dni.
+6. Zapisuj sesje nauki ręcznie lub wygeneruj ich tytuł i notatkę z krótkiego opisu przez AI.
+7. W lewym pasku wybierz jasny/ciemny tryb oraz gotowy albo własny kolor interfejsu.
 
 Hierarchia danych:
 
@@ -220,12 +250,12 @@ Asystenta można otworzyć z kafla na dashboardzie lub przyciskiem w prawym doln
 
 1. Wybierz **Notatka**.
 2. Wybierz przedmiot i temat.
-3. Opcjonalnie wskaż zadanie zapisane wcześniej w StudyFlow — wynik skupi się na jego celu.
-4. Jeżeli nie wybierasz zapisanego zadania, wpisz własny cel, np. „Powtórka definicji do kartkówki”.
+3. Wybierz istniejący temat z podpowiedzi albo wpisz nazwę nowego.
+4. Wybierz zapisane zadanie lub wpisz własny cel, np. „Powtórka definicji do kartkówki”.
 5. Wybierz długość: krótką, standardową lub szczegółową.
 6. Kliknij **Generuj notatkę**.
 
-Po wygenerowaniu treść zostanie dopisana do szczegółów wybranego zadania. Jeśli zadanie nie zostało wybrane, aplikacja utworzy nowe w wybranym temacie i użyje tytułu wygenerowanego przez AI.
+Po wygenerowaniu treść zostanie zapisana i pokazana w sekcji **Materiały AI** w szczegółach wybranego zadania. Jeśli temat lub zadanie nie zostały wcześniej utworzone, aplikacja utworzy brakujące elementy i użyje tytułu zadania wygenerowanego przez AI.
 
 ### Plan nauki
 
@@ -289,6 +319,8 @@ studyflow/
 │   ├── src/api.ts
 │   ├── src/types.ts
 │   ├── src/styles.css
+│   ├── src/accents.css      # pełny system motywów kolorystycznych
+│   ├── src/task-details.css # rozszerzone szczegóły zadań i sesji
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── legacy_cli/             # archiwalna wersja konsolowa
@@ -346,6 +378,7 @@ Aktualny łańcuch:
 - `20260907_01` — podstawowe tabele,
 - `20260907_02` — notatki zadań i kontekst sesji,
 - `20260908_03` — historia materiałów AI.
+- `20260911_04` — tytuły sesji nauki.
 
 Polecenia:
 
@@ -387,6 +420,7 @@ W Swaggerze kliknij **Authorize** i podaj token z `/auth/login`.
 | `GET/PATCH/DELETE` | `/exam-results/{uid}` | Operacje na wyniku |
 | `POST` | `/ai/topics/{topic_uid}/notes` | Generowanie i zapis notatki |
 | `POST` | `/ai/topics/{topic_uid}/plan` | Generowanie i zapis planu |
+| `POST` | `/ai/session-note` | Generowanie tytułu i notatki sesji z krótkiego opisu |
 | `GET` | `/ai/materials` | Historia materiałów użytkownika |
 
 Pełny kontrakt jest dostępny w Swagger UI.
@@ -421,6 +455,19 @@ POST /ai/topics/UUID_TEMATU/plan
 ```
 
 Jeżeli `task_uid` nie należy do tematu z adresu, API zwróci `422`.
+
+### Przykład notatki z sesji AI
+
+```json
+POST /ai/session-note
+
+{
+  "language": "polski",
+  "description": "Rozwiązałem 10 zadań z równań i powtórzyłem wzory"
+}
+```
+
+Endpoint zwraca krótki `title` oraz gotowe `notes`. Sam zapis sesji następuje przez `POST /study-sessions`, dzięki czemu użytkownik może wcześniej poprawić wygenerowaną treść.
 
 ## Paginacja i filtrowanie
 
@@ -537,7 +584,7 @@ docker compose logs api
 docker compose exec api alembic current
 ```
 
-Aktualna rewizja powinna wynosić `20260908_03`.
+Aktualna rewizja powinna wynosić `20260911_04`.
 
 ### Port jest zajęty
 
