@@ -32,6 +32,12 @@ Przed generowaniem użytkownik wybiera rodzaj materiału, przedmiot, temat oraz 
 
 Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania. Każdy poprawny wynik jest automatycznie zapisywany w PostgreSQL i dostępny później przez **Historia materiałów** na dashboardzie.
 
+Materiały są również wiązane z zadaniami:
+
+- wygenerowana notatka trafia bezpośrednio do pola notatki wybranego zadania,
+- plan nauki pojawia się jako osobny kafel w szczegółach zadania,
+- jeśli użytkownik nie wybierze istniejącego zadania, StudyFlow automatycznie tworzy nowe zadanie z krótkim tytułem zaproponowanym przez AI.
+
 Backend AI:
 
 - nie udostępnia klucza Gemini przeglądarce,
@@ -219,6 +225,8 @@ Asystenta można otworzyć z kafla na dashboardzie lub przyciskiem w prawym doln
 5. Wybierz długość: krótką, standardową lub szczegółową.
 6. Kliknij **Generuj notatkę**.
 
+Po wygenerowaniu treść zostanie dopisana do szczegółów wybranego zadania. Jeśli zadanie nie zostało wybrane, aplikacja utworzy nowe w wybranym temacie i użyje tytułu wygenerowanego przez AI.
+
 ### Plan nauki
 
 1. Wybierz **Plan nauki**.
@@ -227,6 +235,8 @@ Asystenta można otworzyć z kafla na dashboardzie lub przyciskiem w prawym doln
 4. Ustaw liczbę dni od `1` do `30`.
 5. Ustaw dzienny czas od `10` do `240` minut.
 6. Kliknij **Ułóż plan**.
+
+Plan zostanie przypięty do wybranego zadania i będzie widoczny jako rozwijany kafel w jego szczegółach. Bez wybranego zadania aplikacja utworzy nowe zadanie i przypisze do niego plan.
 
 ### Historia materiałów
 
