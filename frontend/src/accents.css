@@ -598,6 +598,11 @@ textarea:focus {
 
 @media(max-width:760px){.sidebar .accent-picker{display:block;left:auto;bottom:auto;width:100%}}
 
+/* Subjects open their filtered topic view directly. */
+.subject-view>.section-toolbar .secondary{display:none}.subject-grid .subject-card{position:relative;cursor:pointer;outline:none}.subject-grid .subject-card::after{content:"Zobacz tematy  →";position:absolute;right:22px;bottom:18px;color:var(--accent-ink);font-size:10px;font-weight:850;opacity:0;transform:translateX(-7px);transition:opacity .2s ease,transform .25s ease}.subject-grid .subject-card:hover::after,.subject-grid .subject-card:focus-visible::after{opacity:1;transform:none}.subject-grid .subject-card:focus-visible{border-color:var(--accent)!important;box-shadow:0 0 0 4px var(--accent-glow)!important}.subject-grid .subject-card:active{transform:translateY(-1px) scale(.992)}:root[data-theme="dark"] .subject-grid .subject-card::after{color:color-mix(in srgb,var(--accent) 66%,#fff)}
+
+.empty button,.onboarding .text-button{color:var(--accent-ink)!important}.onboarding>span{background:var(--accent-soft)!important;color:var(--accent-ink)!important;box-shadow:0 10px 28px var(--accent-glow)}.onboarding>span svg{color:inherit!important;stroke:currentColor!important}:root[data-theme="dark"] .empty button,:root[data-theme="dark"] .onboarding .text-button{color:color-mix(in srgb,var(--accent) 68%,#fff)!important}:root[data-theme="dark"] .onboarding>span{background:color-mix(in srgb,var(--accent) 16%,#171b18)!important;color:color-mix(in srgb,var(--accent) 68%,#fff)!important}
+
 .tour-backdrop.tour-v2{background:transparent;backdrop-filter:none}.tour-backdrop.tour-v2::before{background:#0b0e0c42;backdrop-filter:none}
 
 /* Guided first-login tour */
