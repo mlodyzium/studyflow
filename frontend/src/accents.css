@@ -614,3 +614,218 @@ textarea:focus {
 
 @media(max-width:760px){.tour-v2,.tour-v2.left,.tour-v2.right{place-items:end center;padding:14px}.tour-v2 .tour-card{padding:24px 21px}.tour-actions .primary,.tour-actions .secondary{min-width:0;flex:1}.tour-highlight{outline-offset:3px}}
 @media(prefers-reduced-motion:reduce){.tour-v2::before,.tour-v2 .tour-card,.tour-highlight{animation:none!important}.tour-progress>i{transition:none}}
+
+/* Final theme and guided-tour refinements. */
+.tour-backdrop.tour-v2::before{
+  background:#0b0e0c42!important;
+  backdrop-filter:none!important;
+}
+.tour-v2 .tour-copy{
+  animation:tourCopyIn .38s cubic-bezier(.2,.8,.2,1) both;
+}
+.tour-v2 .tour-copy>p{
+  min-height:0;
+  margin-bottom:18px;
+}
+.tour-highlight{
+  border-radius:clamp(18px,2vw,30px)!important;
+  outline:none!important;
+  box-shadow:0 0 0 3px var(--accent),0 0 0 10px color-mix(in srgb,var(--accent) 18%,transparent),0 24px 70px #0005!important;
+}
+.floating-ai.tour-highlight,
+.theme-toggle.tour-highlight{
+  border-radius:16px!important;
+}
+.dashboard-view .dashboard-calendar{
+  border-color:color-mix(in srgb,var(--accent) 24%,var(--line))!important;
+}
+.dashboard-view .dashboard-calendar:hover,
+.dashboard-view .dashboard-calendar:focus-within{
+  border-color:color-mix(in srgb,var(--accent) 58%,var(--line))!important;
+  box-shadow:0 18px 46px #13201012,0 0 0 3px var(--accent-glow)!important;
+}
+.dashboard-calendar .mini-calendar-grid button.selected{
+  border-color:transparent!important;
+  outline:2px solid var(--accent)!important;
+  outline-offset:-2px;
+}
+.subject-view .topic-card:hover,
+.subject-view .topic-card.focused{
+  border-color:var(--accent)!important;
+  box-shadow:0 0 0 3px var(--accent-glow),0 16px 40px #17201416!important;
+}
+.subject-view .topic-card:hover .topic-main h3,
+.subject-view .topic-card.focused .topic-main h3{
+  color:var(--accent-ink)!important;
+}
+@keyframes tourCopyIn{
+  from{opacity:0;transform:translateY(9px);filter:blur(3px)}
+  to{opacity:1;transform:translateY(0);filter:blur(0)}
+}
+@media(prefers-reduced-motion:reduce){
+  .tour-v2 .tour-copy{animation:none!important}
+}
+
+/* The guide card travels between predictable screen anchors without covering its target. */
+.tour-v2 .tour-card{
+  position:fixed;
+  left:calc(100vw - 438px);
+  top:calc(100vh - 28px);
+  transform:translateY(-100%);
+  transition:left .55s cubic-bezier(.22,.8,.24,1),top .55s cubic-bezier(.22,.8,.24,1),transform .55s cubic-bezier(.22,.8,.24,1);
+}
+.tour-v2.center .tour-card{
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+}
+.tour-v2.left .tour-card{
+  left:310px;
+  top:calc(100vh - 28px);
+  transform:translateY(-100%);
+}
+.tour-v2.right .tour-card{
+  left:calc(100vw - 438px);
+  top:calc(100vh - 28px);
+  transform:translateY(-100%);
+}
+.tour-highlight{
+  box-shadow:0 0 0 2px var(--accent),0 0 0 5px color-mix(in srgb,var(--accent) 12%,transparent),0 14px 38px #0003!important;
+}
+.dashboard-view.tour-highlight,
+.subject-view.tour-highlight,
+.task-view.tour-highlight,
+.session-view.tour-highlight,
+.calendar-view.tour-highlight{
+  border-radius:24px!important;
+}
+.sidebar .tour-help{
+  order:4;
+  width:100%;
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line));
+  border-radius:12px;
+  background:transparent;
+  color:var(--muted);
+  font-weight:750;
+  transition:background .2s ease,border-color .2s ease,color .2s ease,transform .2s ease;
+  margin-top:10px;
+  flex:none;
+}
+.sidebar .tour-help svg{width:17px;height:17px;color:var(--accent-ink)}
+.sidebar .tour-help:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--text);transform:translateY(-1px)}
+.sidebar .theme-toggle{order:5}
+.sidebar .accent-picker{order:6}
+.sidebar .profile{order:7}
+@media(max-width:760px){
+  .tour-v2 .tour-card,.tour-v2.left .tour-card,.tour-v2.right .tour-card{
+    left:14px;
+    top:calc(100vh - 14px);
+    transform:translateY(-100%);
+    width:calc(100vw - 28px);
+  }
+  .tour-v2.center .tour-card{left:50%;top:50%;transform:translate(-50%,-50%)}
+}
+@media(prefers-reduced-motion:reduce){
+  .tour-v2 .tour-card{transition:none!important}
+}
+
+/* Keep dashboard cards consistent and make tour selection fit the exact element bounds. */
+.dashboard-view .dashboard-calendar,
+.dashboard-view .dashboard-calendar:hover,
+.dashboard-view .dashboard-calendar:focus-within{
+  border-color:var(--line)!important;
+}
+.dashboard-view .dashboard-calendar:hover,
+.dashboard-view .dashboard-calendar:focus-within{
+  box-shadow:0 18px 45px #29312717!important;
+}
+.tour-highlight{
+  outline:0!important;
+  box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 0 5px color-mix(in srgb,var(--accent) 10%,transparent)!important;
+  animation:none!important;
+}
+.floating-ai.tour-highlight,
+.theme-toggle.tour-highlight{
+  box-shadow:inset 0 0 0 2px var(--accent),0 8px 24px #0002!important;
+}
+.sidebar .side-focus{flex:none}
+
+/* A detached spotlight follows the real element bounds, leaving its content untouched. */
+.tour-highlight{
+  z-index:125!important;
+  outline:0!important;
+  box-shadow:none!important;
+  animation:none!important;
+}
+.tour-spotlight{
+  position:fixed;
+  z-index:124;
+  pointer-events:none;
+  background:transparent;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 78%,white),0 0 12px 3px var(--accent-glow),0 0 32px 8px color-mix(in srgb,var(--accent) 16%,transparent);
+  animation:tourSpotlightIn .42s cubic-bezier(.2,.8,.2,1) both,tourSpotlightGlow 2.4s ease-in-out .42s infinite;
+  transition:left .45s cubic-bezier(.22,.8,.24,1),top .45s cubic-bezier(.22,.8,.24,1),width .45s cubic-bezier(.22,.8,.24,1),height .45s cubic-bezier(.22,.8,.24,1),border-radius .45s ease;
+}
+@keyframes tourSpotlightIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
+@keyframes tourSpotlightGlow{
+  0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 72%,white),0 0 10px 2px var(--accent-glow),0 0 26px 6px color-mix(in srgb,var(--accent) 13%,transparent)}
+  50%{box-shadow:0 0 0 2px var(--accent),0 0 16px 4px var(--accent-glow),0 0 38px 10px color-mix(in srgb,var(--accent) 19%,transparent)}
+}
+@media(prefers-reduced-motion:reduce){.tour-spotlight{animation:none!important;transition:none!important}}
+
+/* Avoid transform conflicts on the opening step; position is controlled by anchor classes. */
+.tour-v2 .tour-card{
+  animation:tourCardFade .3s ease both;
+}
+@keyframes tourCardFade{from{opacity:0}to{opacity:1}}
+
+/* Consolidated account settings. */
+.sidebar .profile-settings{position:relative;order:7;width:100%;flex:none;z-index:45}
+.sidebar .profile-settings .profile{width:100%;margin-top:12px;order:initial}
+.sidebar .profile>span{overflow:hidden;flex:none}
+.sidebar .profile>span img{width:100%;height:100%;display:block;object-fit:cover}
+.sidebar .profile>svg{transition:transform .25s ease,color .2s ease}
+.sidebar .profile-settings.open .profile>svg{transform:rotate(55deg);color:var(--accent)}
+.profile-settings-menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);padding:9px;background:#1a1f1b;border:1px solid #343b35;border-radius:15px;box-shadow:0 20px 55px #0008;display:grid;gap:4px;animation:settingsMenuIn .22s cubic-bezier(.2,.8,.2,1);z-index:50}
+.profile-settings-menu>button{border:0;background:transparent;color:#d6dbd7;border-radius:10px;padding:10px;display:flex;align-items:center;gap:9px;text-align:left;font-size:11px;font-weight:750;transition:.18s}
+.profile-settings-menu>button:hover{background:#272e28;color:#fff;transform:translateX(2px)}
+.profile-settings-menu>button svg{width:16px;color:var(--accent)}
+.settings-accent{border-top:1px solid #303631;margin-top:3px;padding-top:8px}
+.settings-accent>span{display:block;color:#7f8981;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;padding:0 5px 3px}
+.sidebar .settings-accent .accent-picker{position:relative;order:initial;width:100%;margin:0}
+.settings-accent .accent-picker-trigger{min-height:36px;background:#222823;border-color:#343c35}
+.settings-accent .accent-picker-options{padding-left:2px;padding-right:2px}
+@keyframes settingsMenuIn{from{opacity:0;transform:translateY(7px) scale(.97)}to{opacity:1;transform:none}}
+
+.avatar-editor{display:flex;align-items:center;gap:10px;margin:0 0 20px;padding:14px;background:color-mix(in srgb,var(--accent) 7%,#f5f6f3);border:1px solid var(--line);border-radius:16px}
+.avatar-editor>span{width:58px;height:58px;border-radius:17px;display:grid;place-items:center;overflow:hidden;flex:none;background:var(--accent);color:#17200d;font-weight:900}
+.avatar-editor>span img{width:100%;height:100%;object-fit:cover}
+.avatar-editor label{margin:0;min-height:38px;padding:9px 12px;border-radius:11px;background:#202620;color:#fff;display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;cursor:pointer}
+.avatar-editor label svg{width:16px;color:var(--accent)}
+.avatar-editor label input{display:none}
+.avatar-editor>button{border:0;background:transparent;color:#a85049;font-size:10px;font-weight:750;padding:7px}
+:root[data-theme="dark"] .avatar-editor{background:#171b18;border-color:#303731}
+
+/* Account menu opens as a centered settings panel. */
+.sidebar .profile-settings-menu{
+  position:fixed;
+  left:50%;
+  right:auto;
+  top:50%;
+  bottom:auto;
+  width:min(380px,calc(100vw - 32px));
+  padding:14px;
+  transform:translate(-50%,-50%);
+  animation:settingsCenterIn .26s cubic-bezier(.2,.8,.2,1) both;
+}
+.sidebar .profile-settings-menu>button{min-height:43px;font-size:12px}
+.sidebar .profile-settings-menu .settings-accent{margin-top:6px;padding-top:11px}
+@keyframes settingsCenterIn{
+  from{opacity:0;transform:translate(-50%,calc(-50% + 12px)) scale(.97)}
+  to{opacity:1;transform:translate(-50%,-50%) scale(1)}
+}

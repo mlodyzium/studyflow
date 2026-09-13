@@ -8,7 +8,7 @@ Projekt zawiera responsywny frontend React, REST API w FastAPI, bazę PostgreSQL
 
 ### Organizacja nauki
 
-- rejestracja, logowanie i edycja profilu,
+- rejestracja, logowanie, edycja profilu i lokalne zdjęcie profilowe,
 - izolacja danych pomiędzy użytkownikami,
 - przedmioty z opcjonalną datą egzaminu,
 - tematy przypisane do przedmiotów,
@@ -22,7 +22,7 @@ Projekt zawiera responsywny frontend React, REST API w FastAPI, bazę PostgreSQL
 - jasny i ciemny motyw,
 - pięć gotowych kolorów interfejsu oraz możliwość wybrania własnego koloru z palety,
 - płynne przejścia pomiędzy motywami i zapamiętywanie ustawień w przeglądarce,
-- animowany, dziewięciokrokowy samouczek uruchamiany po rejestracji,
+- animowany, jedenastokrokowy samouczek uruchamiany po rejestracji i dostępny później z menu konta,
 - responsywny interfejs desktopowy i mobilny.
 
 ### Asystent AI
@@ -72,9 +72,24 @@ StudyFlow rozdziela tryb jasny/ciemny od koloru przewodniego. Użytkownik może 
 
 Wybrany kolor obejmuje cały interfejs: dashboard, przyciski, formularze, filtry, kalendarz, sesje, strony szczegółów, materiały AI, obramowania, poświaty i gradient podążający za kursorem. Aplikacja automatycznie wylicza jaśniejsze tła oraz kontrastowe kolory tekstu. Zmiana jest animowana, a ustawienia są przechowywane w `localStorage`.
 
+Przełącznik jasnego i ciemnego wariantu pozostaje bezpośrednio na pasku bocznym. Paleta kolorów znajduje się w centralnym panelu konta otwieranym przez profil z ikoną zębatki.
+
+## Profil i centrum ustawień
+
+Kliknięcie profilu na dole lewego paska otwiera wyśrodkowany panel ustawień. Z jednego miejsca można:
+
+- przejść do edycji nazwy użytkownika, adresu e-mail i hasła,
+- wgrać, zmienić albo usunąć zdjęcie profilowe,
+- wybrać gotowy kolor interfejsu lub własny kolor z palety,
+- ponownie uruchomić samouczek.
+
+Zdjęcie profilowe może mieć maksymalnie 2 MB. Jest zapisywane w pamięci lokalnej przeglądarki osobno dla identyfikatora konta — nie trafia do API ani PostgreSQL i nie synchronizuje się pomiędzy urządzeniami. Jeśli zdjęcie nie zostało ustawione, aplikacja pokazuje inicjały użytkownika.
+
 ## Samouczek pierwszego logowania
 
-Po rejestracji i pierwszym zalogowaniu uruchamia się interaktywny samouczek. W dziewięciu krokach automatycznie przełącza widoki, przewija stronę i podświetla omawiany element. Obejmuje dashboard, przedmioty, tematy, zadania, sesje, kalendarz, Asystenta AI oraz personalizację motywu. Można cofać kroki, przechodzić dalej albo pominąć całość. Samouczek nie uruchamia się ponownie podczas zwykłego logowania.
+Po rejestracji i pierwszym zalogowaniu uruchamia się interaktywny samouczek. W jedenastu krokach automatycznie przełącza widoki, przewija stronę i podświetla omawiany element dopasowaną poświatą. Obejmuje dashboard, przedmioty, tematy, zadania, sesje, kalendarz, szybki zapis nauki, Asystenta AI, tryb jasny/ciemny oraz centrum ustawień konta. Komunikat płynnie przemieszcza się pomiędzy pozycjami, można cofać kroki, przechodzić dalej albo pominąć całość.
+
+Samouczek nie uruchamia się automatycznie podczas zwykłego logowania. Aby wrócić do niego później, kliknij profil z zębatką na lewym pasku i wybierz **Uruchom samouczek**.
 
 ## Technologie
 
@@ -227,7 +242,8 @@ Plik `.env` zawiera sekrety, jest ignorowany przez Git i nie powinien być publi
 4. Dodaj temat, np. „Równania kwadratowe”.
 5. Dodaj zadanie lub otwórz Asystenta AI.
 6. Zapisuj sesje nauki ręcznie lub wygeneruj ich tytuł i notatkę z krótkiego opisu przez AI.
-7. W lewym pasku wybierz jasny/ciemny tryb oraz gotowy albo własny kolor interfejsu.
+7. Na lewym pasku wybierz jasny/ciemny tryb.
+8. Kliknij profil z zębatką, aby ustawić zdjęcie profilowe, kolor interfejsu albo ponownie uruchomić samouczek.
 
 Hierarchia danych:
 
