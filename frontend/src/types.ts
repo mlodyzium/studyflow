@@ -29,3 +29,7 @@ export type AiMaterial = {
   content: GeneratedNotes | GeneratedStudyPlan;
   created_at: string;
 };
+export type AiConversation = { conversation_uid: string; title: string; user_message: string; assistant_message: string; proposal: T3achProposal; created_at: string };
+export type T3achTaskProposal = { title: string; priority: "LOW" | "MEDIUM" | "HIGH"; deadline_days: number | null; notes: string | null };
+export type T3achProposal = { reply: string; needs_clarification: boolean; question: string | null; subject_name: string | null; topic_name: string | null; difficulty: string | null; tasks: T3achTaskProposal[]; intent: "organize"|"study_plan"|"notes"|"edit"; target_kind: "subject"|"topic"|"task"|null; target_name: string|null; new_name: string|null; new_priority: "LOW"|"MEDIUM"|"HIGH"|null; new_is_done: boolean|null; days:number; minutes_per_day:number; preview: GeneratedNotes|GeneratedStudyPlan|null };
+export type T3achExecuteResult = { message: string; subject_uid: string|null; topic_uid: string|null; task_uids: string[]; created_subject: boolean; created_topic: boolean };

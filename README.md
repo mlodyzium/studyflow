@@ -52,6 +52,19 @@ Backend AI:
 - weryfikuje własność tematu oraz zadania,
 - zapisuje wyniki oddzielnie dla każdego użytkownika.
 
+### T3ACH — agent nauki
+
+T3ACH jest konwersacyjną warstwą nad StudyFlow. Użytkownik opisuje naturalnym językiem cel, np. „za dwa tygodnie mam sprawdzian z funkcji kwadratowej”, a agent:
+
+- uwzględnia istniejące przedmioty i tematy użytkownika,
+- w razie braku kluczowych informacji zadaje jedno pytanie doprecyzowujące,
+- proponuje przedmiot, temat oraz od 1 do 6 konkretnych zadań,
+- dobiera priorytety i opcjonalne terminy,
+- pokazuje cały plan przed wykonaniem,
+- zapisuje dane dopiero po kliknięciu **Zatwierdź i zapisz w StudyFlow**.
+
+Generowanie propozycji i jej wykonanie są rozdzielone na dwa endpointy. Backend ponownie waliduje zatwierdzony plan i przypisuje dane wyłącznie do zalogowanego użytkownika. Dotychczasowe generatory notatek i planów pozostają dostępne bezpośrednio z panelu T3ACH.
+
 ### AI w sesjach nauki
 
 Podczas dodawania lub edycji sesji można wpisać krótki opis wykonanej pracy, np. `10 zadań z równań i powtórka wzorów`. Przycisk **Utwórz tytuł i notatkę z AI** wysyła opis do API, a Gemini zwraca:
@@ -437,6 +450,8 @@ W Swaggerze kliknij **Authorize** i podaj token z `/auth/login`.
 | `POST` | `/ai/topics/{topic_uid}/notes` | Generowanie i zapis notatki |
 | `POST` | `/ai/topics/{topic_uid}/plan` | Generowanie i zapis planu |
 | `POST` | `/ai/session-note` | Generowanie tytułu i notatki sesji z krótkiego opisu |
+| `POST` | `/ai/t3ach/propose` | Interpretacja celu i przygotowanie propozycji działań |
+| `POST` | `/ai/t3ach/execute` | Zapis zatwierdzonej propozycji T3ACH |
 | `GET` | `/ai/materials` | Historia materiałów użytkownika |
 
 Pełny kontrakt jest dostępny w Swagger UI.

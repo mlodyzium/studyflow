@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
 from app.main import app
-from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan
+from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan, T3achProposal
 
 
 @pytest.fixture()
@@ -256,3 +256,40 @@ def test_ai_notes_cannot_access_another_users_topic(client, monkeypatch):
     monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", should_not_run)
     response = client.post(f"/ai/topics/{topic['topic_uid']}/notes", headers=second_headers, json={})
     assert response.status_code == 404
+
+
+def test_t3ach_proposes_then_executes_actions(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-user")
+
+    async def fake_proposal(*args):
+        return T3achProposal(
+            reply="Ułożę podstawy nauki algebry.",
+            subject_name="Matematyka",
+            topic_name="Algebra",
+            difficulty="Średni",
+            tasks=[
+                {"title": "Powtórz działania", "priority": "HIGH", "deadline_days": 2, "notes": "Zacznij od podstaw."},
+                {"title": "Rozwiąż zadania", "priority": "MEDIUM", "deadline_days": None, "notes": None},
+            ],
+        )
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    proposal = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Chcę nauczyć się algebry"})
+    assert proposal.status_code == 200
+    assert proposal.json()["topic_name"] == "Algebra"
+
+    executed = client.post("/ai/t3ach/execute", headers=headers, json=proposal.json())
+    assert executed.status_code == 200
+    assert executed.json()["created_subject"] is True
+    assert executed.json()["created_topic"] is True
+    assert len(executed.json()["task_uids"]) == 2
+    assert len(client.get("/tasks", headers=headers).json()["items"]) == 2
+
+
+def test_t3ach_normalizes_unused_gemini_fields():
+    proposal = T3achProposal(reply="Co dokładnie chcesz przygotować?", intent="chat", days=0, minutes_per_day=0)
+    assert proposal.days == 7
+    assert proposal.minutes_per_day == 45
+    assert proposal.intent == "organize"
+    assert proposal.needs_clarification is True
+    assert proposal.question == proposal.reply

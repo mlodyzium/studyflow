@@ -1,4 +1,4 @@
-import type { AiMaterial, GeneratedNotes, GeneratedStudyPlan, Page, Session, Subject, Task, Topic, User } from "./types";
+import type { AiConversation, AiMaterial, GeneratedNotes, GeneratedStudyPlan, Page, Session, Subject, T3achExecuteResult, T3achProposal, Task, Topic, User } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api";
 let token = localStorage.getItem("studyflow_token");
@@ -40,6 +40,9 @@ export const api = {
   generatePlan: (id: string, data: { days: number; minutes_per_day: number; task_uid?: string | null; custom_goal?: string | null }) =>
     request<GeneratedStudyPlan>(`/ai/topics/${id}/plan`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
   aiMaterials: (taskId?: string) => request<AiMaterial[]>(`/ai/materials${taskId ? `?task_uid=${taskId}` : ""}`),
+  deleteAiMaterial: (id: string) => request<void>(`/ai/materials/${id}`, { method: "DELETE" }),
+  t3achHistory: () => request<AiConversation[]>("/ai/t3ach/history"),
+  deleteT3achConversation: (id: string) => request<void>(`/ai/t3ach/history/${id}`, { method: "DELETE" }),
   addTask: (data: { title: string; topic_uid: string; deadline: string | null; priority: string; notes?: string | null }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
   updateTask: (id: string, data: Partial<Task>) => request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTask: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
@@ -47,4 +50,6 @@ export const api = {
   deleteSession: (id: string) => request<void>(`/study-sessions/${id}`, { method: "DELETE" }),
   updateSession: (id: string, data: { title?: string; subject_uid?: string; topic_uid?: string | null; task_uid?: string | null; duration_minutes?: number; notes?: string | null }) => request<Session>(`/study-sessions/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   generateSessionNote: (description: string) => request<import("./types").GeneratedSessionNote>("/ai/session-note", { method: "POST", body: JSON.stringify({ description, language: "polski" }) }),
+  proposeT3ach: (message: string) => request<T3achProposal>("/ai/t3ach/propose", { method: "POST", body: JSON.stringify({ message, language: "polski" }) }),
+  executeT3ach: (proposal: T3achProposal) => request<T3achExecuteResult>("/ai/t3ach/execute", { method: "POST", body: JSON.stringify(proposal) }),
 };

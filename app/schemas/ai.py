@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class NoteGenerationRequest(BaseModel):
@@ -69,3 +69,67 @@ class AiMaterialRead(BaseModel):
     title: str
     content: dict[str, Any]
     created_at: datetime
+
+
+class AiConversationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    conversation_uid: UUID
+    title: str
+    user_message: str
+    assistant_message: str
+    proposal: dict[str, Any]
+    created_at: datetime
+
+
+class T3achRequest(BaseModel):
+    message: str = Field(min_length=3, max_length=3000)
+    language: str = Field(default="polski", min_length=2, max_length=30)
+
+
+class T3achTaskProposal(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    priority: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH)$")
+    deadline_days: int | None = Field(default=None, ge=0, le=365)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class T3achProposal(BaseModel):
+    reply: str = Field(min_length=1, max_length=12000)
+    needs_clarification: bool = False
+    question: str | None = Field(default=None, max_length=500)
+    subject_name: str | None = Field(default=None, max_length=100)
+    topic_name: str | None = Field(default=None, max_length=100)
+    difficulty: str | None = Field(default=None, max_length=20)
+    tasks: list[T3achTaskProposal] = Field(default_factory=list, max_length=10)
+    intent: str = Field(default="organize", max_length=30)
+    target_kind: str | None = Field(default=None, pattern="^(subject|topic|task)$")
+    target_name: str | None = Field(default=None, max_length=160)
+    new_name: str | None = Field(default=None, max_length=160)
+    new_priority: str | None = Field(default=None, pattern="^(LOW|MEDIUM|HIGH)$")
+    new_is_done: bool | None = None
+    days: int = Field(default=7, ge=0, le=30)
+    minutes_per_day: int = Field(default=45, ge=0, le=240)
+    preview: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_optional_agent_fields(self):
+        if self.days == 0:
+            self.days = 7
+        if self.minutes_per_day == 0:
+            self.minutes_per_day = 45
+        if self.intent not in {"organize", "study_plan", "notes", "edit"}:
+            self.intent = "organize"
+            self.needs_clarification = True
+            self.tasks = []
+            if not self.question:
+                self.question = self.reply
+        return self
+
+
+class T3achExecuteResult(BaseModel):
+    message: str
+    subject_uid: UUID | None = None
+    topic_uid: UUID | None = None
+    task_uids: list[UUID]
+    created_subject: bool
+    created_topic: bool

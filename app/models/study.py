@@ -97,3 +97,14 @@ class AiMaterial(Base):
     title: Mapped[str] = mapped_column(String(160))
     content: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class AiConversation(Base):
+    __tablename__ = "ai_conversations"
+    conversation_uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.user_uid", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    user_message: Mapped[str] = mapped_column(String(3000))
+    assistant_message: Mapped[str] = mapped_column(String(4000))
+    proposal: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
