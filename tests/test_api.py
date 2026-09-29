@@ -1,5 +1,6 @@
 import os
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -293,3 +294,73 @@ def test_t3ach_normalizes_unused_gemini_fields():
     assert proposal.intent == "organize"
     assert proposal.needs_clarification is True
     assert proposal.question == proposal.reply
+
+
+def test_t3ach_normalizes_polish_enum_values_and_rejects_off_topic():
+    proposal = T3achProposal.model_validate({"reply": "Dodam zadanie.", "intent": "edit", "target_kind": "zadanie", "new_priority": "wysoki", "tasks": [{"title": "Powtórka", "priority": "średni"}]})
+    assert proposal.target_kind == "task"
+    assert proposal.new_priority == "HIGH"
+    assert proposal.tasks[0].priority == "MEDIUM"
+    plan = T3achProposal.model_validate({"reply": "Przygotuję plan.", "intent": "study_plan", "target_kind": "zadanie domowe"})
+    assert plan.target_kind is None
+    unrelated = T3achProposal(reply="Opowiem o pogodzie.", intent="off_topic", subject_name="Matematyka", tasks=[{"title": "Pogoda"}])
+    assert unrelated.needs_clarification is True
+    assert unrelated.tasks == []
+    assert "nauce" in unrelated.reply
+
+
+def test_t3ach_reuses_existing_structure_for_plan(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-reuse")
+    subject = create_subject(client, headers, "Matematyka")
+    topic = client.post("/topics", headers=headers, json={"name": "Wielomiany", "subject_uid": subject["subject_uid"]}).json()
+    task = client.post("/tasks", headers=headers, json={"title": "Powtórka wielomianów", "topic_uid": topic["topic_uid"], "priority": "MEDIUM"}).json()
+
+    async def fake_proposal(*args):
+        return T3achProposal(reply="Ułożę plan.", intent="study_plan", subject_name=" matematyka ", topic_name="wielomiany", target_kind="zadanie", target_name="powtorka wielomianow", tasks=[])
+
+    async def fake_plan(*args):
+        return GeneratedStudyPlan(task_title="Powtórka wielomianów", title="Plan wielomianów", overview="Powtórka", steps=[{"day": 1, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45}], success_criteria=["Umiem rozwiązać zadania"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan nauki wielomianów"})
+    assert response.status_code == 200
+    proposal = response.json()
+    assert proposal["subject_name"] == "Matematyka"
+    assert proposal["topic_name"] == "Wielomiany"
+    assert proposal["target_name"] == "Powtórka wielomianów"
+    executed = client.post("/ai/t3ach/execute", headers=headers, json=proposal)
+    assert executed.status_code == 200
+    assert executed.json()["created_subject"] is False
+    assert executed.json()["created_topic"] is False
+    assert executed.json()["task_uids"] == [task["task_uid"]]
+    assert client.get("/tasks", headers=headers).json()["total"] == 1
+
+
+def test_t3ach_off_topic_returns_reply_without_actions(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-unrelated")
+
+    async def fake_proposal(*args):
+        return T3achProposal(reply="Pogoda będzie słoneczna.", intent="off_topic", subject_name="Pogoda", tasks=[{"title": "Sprawdź prognozę"}])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Jaka będzie pogoda?"})
+    assert response.status_code == 200
+    proposal = response.json()
+    assert proposal["needs_clarification"] is True
+    assert proposal["tasks"] == []
+    assert proposal["subject_name"] is None
+    assert client.post("/ai/t3ach/execute", headers=headers, json=proposal).status_code == 422
+
+
+def test_t3ach_returns_clarification_if_model_output_is_invalid(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-invalid")
+
+    async def invalid_response(*args):
+        raise HTTPException(status_code=502, detail="Invalid Gemini response")
+
+    monkeypatch.setattr("app.services.ai._generate_structured", invalid_response)
+    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan nauki"})
+    assert response.status_code == 200
+    assert response.json()["needs_clarification"] is True
+    assert response.json()["tasks"] == []

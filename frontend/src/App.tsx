@@ -381,19 +381,70 @@ function VoiceT3ach({close,onSaved,openGenerator}:{close:()=>void;onSaved:()=>Pr
   const [textMode,setTextMode]=useState(false);
   const [input,setInput]=useState("");
   const [error,setError]=useState("");
+  const [audioNeedsClick,setAudioNeedsClick]=useState(false);
   const [saving,setSaving]=useState(false);
   const recognitionRef=useRef<any>(null);
+  const listeningRef=useRef(false);
+  const transcriptRef=useRef("");
+  const audioRef=useRef<HTMLAudioElement|null>(null);
+  const audioContextRef=useRef<AudioContext|null>(null);
+  const audioSourceRef=useRef<AudioBufferSourceNode|null>(null);
+  const audioUrlRef=useRef<string|null>(null);
+  const speechRequestRef=useRef(0);
   const supported=Boolean((window as any).SpeechRecognition||(window as any).webkitSpeechRecognition);
 
-  function speak(text:string){
-    if(!("speechSynthesis" in window))return setState("idle");
-    window.speechSynthesis.cancel();
-    const utterance=new SpeechSynthesisUtterance(text.split("\n\n")[0]);
-    utterance.lang="pl-PL";utterance.rate=.96;utterance.pitch=1.02;
-    utterance.onstart=()=>setState("speaking");
-    utterance.onend=()=>setState("idle");
-    utterance.onerror=()=>setState("idle");
-    window.speechSynthesis.speak(utterance);
+  function stopAudio(){
+    speechRequestRef.current++;
+    audioSourceRef.current?.stop();audioSourceRef.current=null;
+    audioRef.current?.pause();audioRef.current=null;
+    if(audioUrlRef.current){URL.revokeObjectURL(audioUrlRef.current);audioUrlRef.current=null}
+    setAudioNeedsClick(false);
+  }
+
+  function unlockAudio(){
+    try{
+      audioContextRef.current??=new AudioContext();
+      const context=audioContextRef.current;
+      void context.resume().catch(()=>{});
+      const silent=context.createBufferSource();silent.buffer=context.createBuffer(1,1,context.sampleRate);silent.connect(context.destination);silent.start();
+    }catch{ /* Przeglądarka może nie obsługiwać Web Audio. */ }
+  }
+
+  async function speak(text:string){
+    stopAudio();const request=speechRequestRef.current;
+    try{
+      const blob=await api.t3achSpeech(text.split("\n\n")[0].slice(0,1500));
+      if(request!==speechRequestRef.current)return;
+      const url=URL.createObjectURL(blob);audioUrlRef.current=url;
+      const context=audioContextRef.current;
+      if(context?.state==="running"){
+        try{
+          const buffer=await context.decodeAudioData(await blob.arrayBuffer());
+          if(request!==speechRequestRef.current)return;
+          const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);audioSourceRef.current=source;
+          source.onended=()=>{if(request===speechRequestRef.current){audioSourceRef.current=null;stopAudio();setState("idle")}};
+          source.start();setState("speaking");return;
+        }catch{ /* Gdy dekodowanie zawiedzie, spróbuj odtworzyć plik bezpośrednio. */ }
+      }
+      const player=new Audio(url);audioRef.current=player;
+      player.onended=()=>{if(request===speechRequestRef.current){stopAudio();setState("idle")}};
+      player.onerror=()=>{if(request===speechRequestRef.current){stopAudio();setState("idle");setError("Nie udało się odtworzyć głosu.")}};
+      await player.play();
+      if(request===speechRequestRef.current)setState("speaking");
+    }catch(err){
+      if(request===speechRequestRef.current){
+        setState("idle");
+        if(err instanceof DOMException&&err.name==="NotAllowedError"&&audioRef.current){setAudioNeedsClick(true);setError("")}
+        else{stopAudio();setError(err instanceof Error?err.message:"Nie udało się odtworzyć głosu.")}
+      }
+    }
+  }
+
+  async function playOnClick(){
+    unlockAudio();
+    const player=audioRef.current;if(!player)return;
+    try{await player.play();setAudioNeedsClick(false);setError("");setState("speaking")}
+    catch{setError("Przeglądarka nadal blokuje odtwarzanie. Sprawdź ustawienia dźwięku tej strony.")}
   }
 
   async function ask(value:string){
@@ -409,23 +460,26 @@ function VoiceT3ach({close,onSaved,openGenerator}:{close:()=>void;onSaved:()=>Pr
   }
 
   function listen(){
+    unlockAudio();
+    if(listeningRef.current){listeningRef.current=false;recognitionRef.current?.stop();setState("thinking");const value=transcriptRef.current.trim();if(value.length>=3)void ask(value);else{setState("idle");setError("Powiedz trochę więcej i spróbuj ponownie.")}return}
     if(!supported){setTextMode(true);setError("Ta przeglądarka nie obsługuje rozpoznawania mowy. Możesz wpisać wiadomość.");return}
-    window.speechSynthesis?.cancel();
+    stopAudio();
     const Recognition=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
     const recognition=new Recognition();recognitionRef.current=recognition;
-    recognition.lang="pl-PL";recognition.interimResults=true;recognition.continuous=false;
+    recognition.lang="pl-PL";recognition.interimResults=true;recognition.continuous=true;
+    listeningRef.current=true;transcriptRef.current="";
     recognition.onstart=()=>{setState("listening");setTranscript("");setError("")};
-    recognition.onresult=(event:any)=>{let text="";for(let index=event.resultIndex;index<event.results.length;index++)text+=event.results[index][0].transcript;setTranscript(text);if(event.results[event.results.length-1].isFinal)ask(text)};
-    recognition.onerror=(event:any)=>{setState("idle");if(event.error!=="aborted")setError(event.error==="not-allowed"?"Zezwól przeglądarce na dostęp do mikrofonu.":"Nie udało się rozpoznać głosu. Spróbuj ponownie.")};
-    recognition.onend=()=>setState(current=>current==="listening"?"idle":current);
+    recognition.onresult=(event:any)=>{const text=Array.from(event.results,(result:any)=>result[0].transcript).join(" ").trim();transcriptRef.current=text;setTranscript(text)};
+    recognition.onerror=(event:any)=>{if(event.error==="no-speech"&&listeningRef.current)return;listeningRef.current=false;setState("idle");if(event.error!=="aborted")setError(event.error==="not-allowed"?"Zezwól przeglądarce na dostęp do mikrofonu.":"Nie udało się rozpoznać głosu. Spróbuj ponownie.")};
+    recognition.onend=()=>{if(listeningRef.current){try{recognition.start()}catch{listeningRef.current=false;setState("idle")}}};
     recognition.start();
   }
 
-  async function approve(){if(!proposal||saving)return;setSaving(true);setState("thinking");try{const result=await api.executeT3ach(proposal);setProposal(null);setResponse(result.message);await onSaved();speak(`Gotowe. ${result.message}`)}catch(err){const message=err instanceof Error?err.message:"Nie udało się zapisać zmian.";setError(message);setState("idle")}finally{setSaving(false)}}
-  useEffect(()=>()=>{recognitionRef.current?.abort();window.speechSynthesis?.cancel()},[]);
-  function submit(event:FormEvent){event.preventDefault();const value=input;setInput("");ask(value)}
-  const label=state==="listening"?"Słucham…":state==="thinking"?"Myślę…":state==="speaking"?"Odpowiadam…":"Gotowy";
-  return <div className={`voice-t3ach-backdrop ${state}`}><button className="voice-close" onClick={close} aria-label="Zamknij"><X/></button><div className="voice-t3ach-stage"><div className="voice-name"><small>STUDYFLOW AGENT</small><h1>T3ACH</h1></div><button className="voice-orb" onClick={state==="idle"?listen:undefined} disabled={state==="thinking"||state==="speaking"} aria-label="Rozpocznij rozmowę"><span className="orb-core"><Sparkles/></span><i/><i/><i/><b className="voice-bars">{Array.from({length:18},(_,index)=><em key={index}/>)}</b></button><div className="voice-state"><span/><strong>{label}</strong><p>{transcript?`„${transcript}”`:response}</p>{response&&transcript&&<small>{response}</small>}</div>{error&&<div className="voice-error">{error}</div>}{proposal&&<div className="voice-proposal"><small>PODGLĄD · NIC JESZCZE NIE ZAPISANO</small><h3>{proposal.subject_name} → {proposal.topic_name}</h3><p>{proposal.reply}</p><div><button className="secondary" onClick={()=>setProposal(null)}>Odrzuć</button><button className="primary" onClick={approve} disabled={saving}><CheckCircle2/>{saving?"Zapisuję…":"Zatwierdź"}</button></div></div>}<div className="voice-controls"><button onClick={listen} disabled={state!=="idle"}>{state==="listening"?<MicOff/>:<Mic/>}<span>{state==="listening"?"Zatrzymaj":"Mów"}</span></button><button onClick={()=>setTextMode(value=>!value)}><Keyboard/><span>Wpisz</span></button><button onClick={openGenerator}><BookOpen/><span>Notatka / plan</span></button></div>{textMode&&<form className="voice-text-form" onSubmit={submit}><input autoFocus value={input} onChange={event=>setInput(event.target.value)} placeholder="Napisz do T3ACH…"/><button className="primary" disabled={input.trim().length<3||state==="thinking"}><Send/></button></form>}</div></div>
+  async function approve(){if(!proposal||saving)return;unlockAudio();setSaving(true);setState("thinking");try{const result=await api.executeT3ach(proposal);setProposal(null);setResponse(result.message);await onSaved();speak(`Gotowe. ${result.message}`)}catch(err){const message=err instanceof Error?err.message:"Nie udało się zapisać zmian.";setError(message);setState("idle")}finally{setSaving(false)}}
+  useEffect(()=>()=>{listeningRef.current=false;recognitionRef.current?.abort();stopAudio();void audioContextRef.current?.close();audioContextRef.current=null},[]);
+  function submit(event:FormEvent){event.preventDefault();unlockAudio();const value=input;setInput("");ask(value)}
+  const label=state==="listening"?"Słucham — kliknij ponownie, gdy skończysz":state==="thinking"?"Myślę…":state==="speaking"?"Odpowiadam…":"Gotowy";
+  return <div className={`voice-t3ach-backdrop ${state}`}><button className="voice-close" onClick={close} aria-label="Zamknij"><X/></button><div className="voice-t3ach-stage"><div className="voice-name"><small>STUDYFLOW AGENT</small><h1>T3ACH</h1></div><button className="voice-orb" onClick={state==="idle"||state==="listening"?listen:undefined} disabled={state==="thinking"||state==="speaking"} aria-label={state==="listening"?"Zakończ wypowiedź":"Rozpocznij rozmowę"}><span className="orb-core"><Sparkles/></span><i/><i/><i/><b className="voice-bars">{Array.from({length:18},(_,index)=><em key={index}/>)}</b></button><div className="voice-state"><span/><strong>{label}</strong><p>{transcript?`„${transcript}”`:response}</p>{response&&transcript&&<small>{response}</small>}</div>{error&&<div className="voice-error">{error}</div>}{audioNeedsClick&&<button className="voice-replay" onClick={playOnClick}><Play/>Odtwórz odpowiedź</button>}{proposal&&<div className="voice-proposal"><small>PODGLĄD · NIC JESZCZE NIE ZAPISANO</small><h3>{proposal.intent==="session"?proposal.session_title:`${proposal.subject_name} → ${proposal.topic_name}`}</h3><p>{proposal.reply}{proposal.intent==="session"?`\n${proposal.session_duration_minutes} minut · ${proposal.session_notes??""}`:""}</p><div><button className="secondary" onClick={()=>setProposal(null)}>Odrzuć</button><button className="primary" onClick={approve} disabled={saving}><CheckCircle2/>{saving?"Zapisuję…":"Zatwierdź"}</button></div></div>}<div className="voice-controls"><button onClick={listen} disabled={state!=="idle"&&state!=="listening"}>{state==="listening"?<MicOff/>:<Mic/>}<span>{state==="listening"?"Zakończ i wyślij":"Mów"}</span></button><button onClick={()=>setTextMode(value=>!value)}><Keyboard/><span>Wpisz</span></button><button onClick={openGenerator}><BookOpen/><span>Notatka / plan</span></button></div>{textMode&&<form className="voice-text-form" onSubmit={submit}><input autoFocus value={input} onChange={event=>setInput(event.target.value)} placeholder="Napisz do T3ACH…"/><button className="primary" disabled={input.trim().length<3||state==="thinking"}><Send/></button></form>}</div></div>
 }
 
 function T3achAssistant({close,onSaved,openGenerator}:{close:()=>void;onSaved:()=>Promise<void>;openGenerator:()=>void}) {

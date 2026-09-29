@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class NoteGenerationRequest(BaseModel):
@@ -86,11 +86,22 @@ class T3achRequest(BaseModel):
     language: str = Field(default="polski", min_length=2, max_length=30)
 
 
+class T3achSpeechRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1500)
+
+
 class T3achTaskProposal(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     priority: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH)$")
     deadline_days: int | None = Field(default=None, ge=0, le=365)
     notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value):
+        if isinstance(value, str):
+            return {"niski": "LOW", "średni": "MEDIUM", "sredni": "MEDIUM", "wysoki": "HIGH"}.get(value.strip().casefold(), value.strip().upper())
+        return value
 
 
 class T3achProposal(BaseModel):
@@ -109,7 +120,31 @@ class T3achProposal(BaseModel):
     new_is_done: bool | None = None
     days: int = Field(default=7, ge=0, le=30)
     minutes_per_day: int = Field(default=45, ge=0, le=240)
+    session_title: str | None = Field(default=None, max_length=160)
+    session_notes: str | None = Field(default=None, max_length=3000)
+    session_duration_minutes: int | None = Field(default=None, ge=1, le=240)
     preview: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_unrelated_edit_fields(cls, value):
+        if isinstance(value, dict) and value.get("intent") != "edit":
+            value = {**value, "target_kind": None, "new_priority": None}
+        return value
+
+    @field_validator("target_kind", mode="before")
+    @classmethod
+    def normalize_target_kind(cls, value):
+        if isinstance(value, str):
+            return {"przedmiot": "subject", "temat": "topic", "zadanie": "task"}.get(value.strip().casefold(), value.strip().casefold())
+        return value
+
+    @field_validator("new_priority", mode="before")
+    @classmethod
+    def normalize_new_priority(cls, value):
+        if isinstance(value, str):
+            return {"niski": "LOW", "średni": "MEDIUM", "sredni": "MEDIUM", "wysoki": "HIGH"}.get(value.strip().casefold(), value.strip().upper())
+        return value
 
     @model_validator(mode="after")
     def normalize_optional_agent_fields(self):
@@ -117,12 +152,27 @@ class T3achProposal(BaseModel):
             self.days = 7
         if self.minutes_per_day == 0:
             self.minutes_per_day = 45
-        if self.intent not in {"organize", "study_plan", "notes", "edit"}:
+        if self.intent == "other":
+            self.intent = "off_topic"
+        if self.intent == "off_topic":
+            self.needs_clarification = True
+            self.reply = "Pomagam w nauce i organizowaniu nauki. Powiedz proszę, czego chcesz się nauczyć albo co mam zaplanować."
+            self.question = self.reply
+            self.subject_name = self.topic_name = None
+            self.tasks = []
+        elif self.intent == "study_help":
+            self.needs_clarification = True
+            self.question = self.reply
+            self.tasks = []
+        elif self.intent not in {"organize", "study_plan", "notes", "edit", "session"}:
             self.intent = "organize"
             self.needs_clarification = True
             self.tasks = []
             if not self.question:
                 self.question = self.reply
+        if self.needs_clarification:
+            self.tasks = []
+            self.preview = None
         return self
 
 

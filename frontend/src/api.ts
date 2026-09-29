@@ -20,6 +20,12 @@ export function setToken(value: string) { token = value; localStorage.setItem("s
 export function clearToken() { token = null; localStorage.removeItem("studyflow_token"); }
 export const hasToken = () => Boolean(token);
 
+async function speech(text: string): Promise<Blob> {
+  const response = await fetch(`${BASE}/ai/t3ach/speech`, {method: "POST", headers: {"Content-Type": "application/json", ...(token ? {Authorization: `Bearer ${token}`} : {})}, body: JSON.stringify({text})});
+  if (!response.ok) {const body=await response.json().catch(()=>({}));throw new Error(typeof body.detail==="string"?body.detail:"Nie udało się wygenerować głosu.")}
+  return response.blob();
+}
+
 export const api = {
   login: (username: string, password: string) => request<{ access_token: string }>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   register: (username: string, email: string, password: string) => request<User>("/auth/register", { method: "POST", body: JSON.stringify({ username, email: email || null, password }) }),
@@ -52,4 +58,5 @@ export const api = {
   generateSessionNote: (description: string) => request<import("./types").GeneratedSessionNote>("/ai/session-note", { method: "POST", body: JSON.stringify({ description, language: "polski" }) }),
   proposeT3ach: (message: string) => request<T3achProposal>("/ai/t3ach/propose", { method: "POST", body: JSON.stringify({ message, language: "polski" }) }),
   executeT3ach: (proposal: T3achProposal) => request<T3achExecuteResult>("/ai/t3ach/execute", { method: "POST", body: JSON.stringify(proposal) }),
+  t3achSpeech: speech,
 };

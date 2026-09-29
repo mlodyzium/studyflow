@@ -18,6 +18,8 @@ class Settings:
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
+    gemini_tts_model: str = os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
+    gemini_tts_voice: str = os.getenv("GEMINI_TTS_VOICE", "Despina")
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(
             origin.strip()
