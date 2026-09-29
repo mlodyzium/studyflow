@@ -4,5 +4,6 @@ import App from "./App";
 import "./styles.css";
 import "./task-details.css";
 import "./accents.css";
+import "./features/study/study.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);

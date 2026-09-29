@@ -1,5 +1,5 @@
-export type User = { user_uid: string; username: string; email: string | null; created_at: string };
-export type Subject = { subject_uid: string; name: string; user_uid: string; exam_date: string | null };
+export type User = { user_uid: string; username: string; email: string | null; created_at: string; timezone:string;preferred_minutes:number;preferred_study_time:string;task_shortcut:string;ai_shortcut:string;onboarding_complete:boolean };
+export type Subject = { subject_uid: string; name: string; user_uid: string; exam_date: string | null; color:string;tags:string[];archived_at:string|null };
 export type Topic = { topic_uid: string; name: string; subject_uid: string; difficulty: string | null; is_done: boolean };
 export type Task = { task_uid: string; title: string; topic_uid: string; is_done: boolean; deadline: string | null; priority: "LOW" | "MEDIUM" | "HIGH"; notes: string | null };
 export type Session = { study_uid: string; title: string; subject_uid: string; topic_uid: string | null; task_uid: string | null; started_at: string; duration_minutes: number | null; notes: string | null };
@@ -19,7 +19,12 @@ export type GeneratedStudyPlan = {
   overview: string;
   steps: { day: number; title: string; objective: string; activities: string[]; duration_minutes: number }[];
   success_criteria: string[];
+  start_date?: string | null;
+  plan_uid?: string | null;
 };
+export type PlanDay = {day_uid:string;day_number:number;scheduled_date:string;scheduled_time:string|null;title:string;objective:string;activities:string[];duration_minutes:number;is_done:boolean;calendar_task_uid:string|null};
+export type StudyPlan = {plan_uid:string;topic_uid:string;material_uid:string|null;title:string;overview:string;success_criteria:string[];start_date:string;minutes_per_day:number;created_at:string;days:PlanDay[]};
+export type Review = {review_uid:string;material_uid:string;topic_uid:string;due_at:string;interval_days:number;streak:number;last_reviewed_at:string|null};
 export type AiMaterial = {
   material_uid: string;
   topic_uid: string;
@@ -31,5 +36,5 @@ export type AiMaterial = {
 };
 export type AiConversation = { conversation_uid: string; title: string; user_message: string; assistant_message: string; proposal: T3achProposal; created_at: string };
 export type T3achTaskProposal = { title: string; priority: "LOW" | "MEDIUM" | "HIGH"; deadline_days: number | null; notes: string | null };
-export type T3achProposal = { reply: string; needs_clarification: boolean; question: string | null; subject_name: string | null; topic_name: string | null; difficulty: string | null; tasks: T3achTaskProposal[]; intent: "organize"|"study_plan"|"notes"|"edit"|"session"; target_kind: "subject"|"topic"|"task"|null; target_name: string|null; new_name: string|null; new_priority: "LOW"|"MEDIUM"|"HIGH"|null; new_is_done: boolean|null; days:number; minutes_per_day:number; session_title:string|null; session_notes:string|null; session_duration_minutes:number|null; preview: GeneratedNotes|GeneratedStudyPlan|null };
-export type T3achExecuteResult = { message: string; subject_uid: string|null; topic_uid: string|null; task_uids: string[]; created_subject: boolean; created_topic: boolean };
+export type T3achProposal = { proposal_uid:string|null; reply: string; needs_clarification: boolean; question: string | null; subject_name: string | null; topic_name: string | null; difficulty: string | null; tasks: T3achTaskProposal[]; intent: "organize"|"study_plan"|"notes"|"edit"|"session"; material_types: ("notes"|"plan")[]; target_kind: "subject"|"topic"|"task"|null; target_name: string|null; new_name: string|null; new_priority: "LOW"|"MEDIUM"|"HIGH"|null; new_is_done: boolean|null; days:number; minutes_per_day:number; plan_start_date:string|null; session_title:string|null; session_notes:string|null; session_duration_minutes:number|null; preview: GeneratedNotes|GeneratedStudyPlan|{notes:GeneratedNotes;plan:GeneratedStudyPlan}|null };
+export type T3achExecuteResult = { message: string; subject_uid: string|null; topic_uid: string|null; task_uids: string[];plan_uids:string[]; created_subject: boolean; created_topic: boolean };
