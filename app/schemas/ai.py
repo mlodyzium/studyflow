@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -32,6 +32,9 @@ class PlanGenerationRequest(BaseModel):
     custom_goal: str | None = Field(default=None, max_length=500)
     days: int = Field(default=7, ge=1, le=30)
     minutes_per_day: int = Field(default=45, ge=10, le=240)
+    local_date: date | None = None
+    local_hour: int | None = Field(default=None, ge=0, le=23)
+    sent_at: datetime | None = None
 
 
 class StudyPlanStep(BaseModel):
@@ -48,6 +51,20 @@ class GeneratedStudyPlan(BaseModel):
     overview: str = Field(min_length=1, max_length=1200)
     steps: list[StudyPlanStep] = Field(min_length=1, max_length=30)
     success_criteria: list[str] = Field(min_length=1, max_length=8)
+    start_date: date | None = None
+    plan_uid: UUID | None = None
+
+
+class ManualNoteRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=160)
+    content: str = Field(min_length=10, max_length=12000)
+
+
+class FallbackPlanRequest(BaseModel):
+    goal: str = Field(min_length=3, max_length=500)
+    days: int = Field(default=7, ge=1, le=30)
+    minutes_per_day: int = Field(default=45, ge=10, le=240)
+    sent_at: datetime | None = None
 
 
 class SessionNoteGenerationRequest(BaseModel):
@@ -81,9 +98,51 @@ class AiConversationRead(BaseModel):
     created_at: datetime
 
 
+class T3achHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=500)
+
+
+class T3achPreviousTask(BaseModel):
+    title: str = Field(max_length=160)
+    priority: Literal["LOW", "MEDIUM", "HIGH"]
+    deadline_days: int | None = Field(default=None, ge=0, le=365)
+    notes: str | None = Field(default=None, max_length=200)
+
+
+class T3achPreviousProposal(BaseModel):
+    original_request: str | None = Field(default=None, max_length=3000)
+    intent: str = Field(max_length=30)
+    subject_name: str | None = Field(default=None, max_length=100)
+    topic_name: str | None = Field(default=None, max_length=100)
+    target_name: str | None = Field(default=None, max_length=160)
+    target_kind: Literal["subject", "topic", "task"] | None = None
+    difficulty: str | None = Field(default=None, max_length=20)
+    new_name: str | None = Field(default=None, max_length=160)
+    new_priority: Literal["LOW", "MEDIUM", "HIGH"] | None = None
+    new_is_done: bool | None = None
+    material_types: list[Literal["notes", "plan"]] = Field(default_factory=list, max_length=2)
+    days: int | None = Field(default=None, ge=1, le=30)
+    minutes_per_day: int | None = Field(default=None, ge=10, le=240)
+    session_title: str | None = Field(default=None, max_length=160)
+    session_duration_minutes: int | None = Field(default=None, ge=1, le=240)
+    session_notes: str | None = Field(default=None, max_length=500)
+    tasks: list[T3achPreviousTask] = Field(default_factory=list, max_length=10)
+
+
 class T3achRequest(BaseModel):
     message: str = Field(min_length=3, max_length=3000)
     language: str = Field(default="polski", min_length=2, max_length=30)
+    history: list[T3achHistoryTurn] = Field(default_factory=list, max_length=10)
+    previous_proposal_uid: UUID | None = None
+    local_date: date | None = None
+    local_hour: int | None = Field(default=None, ge=0, le=23)
+    sent_at: datetime | None = None
+
+
+class T3achExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    proposal_uid: UUID
 
 
 class T3achSpeechRequest(BaseModel):
@@ -105,6 +164,7 @@ class T3achTaskProposal(BaseModel):
 
 
 class T3achProposal(BaseModel):
+    proposal_uid: UUID | None = None
     reply: str = Field(min_length=1, max_length=12000)
     needs_clarification: bool = False
     question: str | None = Field(default=None, max_length=500)
@@ -124,6 +184,8 @@ class T3achProposal(BaseModel):
     session_notes: str | None = Field(default=None, max_length=3000)
     session_duration_minutes: int | None = Field(default=None, ge=1, le=240)
     preview: dict[str, Any] | None = None
+    material_types: list[Literal["notes", "plan"]] = Field(default_factory=list, max_length=2)
+    plan_start_date: date | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +210,14 @@ class T3achProposal(BaseModel):
 
     @model_validator(mode="after")
     def normalize_optional_agent_fields(self):
+        if self.intent == "notes_plan":
+            self.intent = "notes"
+            self.material_types = ["notes", "plan"]
+        if self.intent == "notes" and "notes" not in self.material_types:
+            self.material_types.insert(0, "notes")
+        if self.intent == "study_plan" and "plan" not in self.material_types:
+            self.material_types.insert(0, "plan")
+        self.material_types = list(dict.fromkeys(self.material_types))
         if self.days == 0:
             self.days = 7
         if self.minutes_per_day == 0:
@@ -181,5 +251,6 @@ class T3achExecuteResult(BaseModel):
     subject_uid: UUID | None = None
     topic_uid: UUID | None = None
     task_uids: list[UUID]
+    plan_uids: list[UUID] = Field(default_factory=list)
     created_subject: bool
     created_topic: bool

@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi import Request
 
 from app.core.logging import get_logger
+from app.core.traffic import record_request
 
 logger = get_logger("http")
 
@@ -16,6 +17,7 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
     except Exception:
         duration_ms = (perf_counter() - started_at) * 1000
+        record_request(500, duration_ms)
         logger.exception(
             "request_failed request_id=%s method=%s path=%s duration_ms=%.2f",
             request_id,
@@ -26,6 +28,7 @@ async def log_requests(request: Request, call_next):
         raise
 
     duration_ms = (perf_counter() - started_at) * 1000
+    record_request(response.status_code, duration_ms)
     log = logger.debug if request.url.path == "/health" else logger.info
     log(
         "request_completed request_id=%s method=%s path=%s status=%s duration_ms=%.2f",

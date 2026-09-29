@@ -1,5 +1,7 @@
 from typing import TypeVar
 from uuid import UUID
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import asc, desc, func, select
@@ -14,8 +16,22 @@ from app.schemas.study import (
     TopicUpdate, UserCreate, UserUpdate,
 )
 from app.services.pagination import paginate
+from app.services.names import normalize_name
 
 T = TypeVar("T")
+
+
+def _clean_tags(tags: list[str]) -> list[str]:
+    cleaned = list(dict.fromkeys(item.strip() for item in tags if item.strip()))
+    if any(len(item) > 30 for item in cleaned):
+        raise HTTPException(status_code=422, detail="Tag może mieć najwyżej 30 znaków.")
+    return cleaned
+
+
+def _utc(value: datetime | None, user: models.User) -> datetime | None:
+    if value is None: return None
+    local = value.replace(tzinfo=ZoneInfo(user.timezone)) if value.tzinfo is None else value
+    return local.astimezone(timezone.utc)
 
 
 def _not_found(name: str) -> HTTPException:
@@ -44,13 +60,17 @@ def _delete(db: Session, value: object) -> None:
 
 
 def create_user(db: Session, data: UserCreate):
-    values = data.model_dump(exclude={"password"})
+    values = data.model_dump(exclude={"password", "confirm_password"})
     values["password_hash"] = hash_password(data.password)
     return _save(db, models.User(**values), "Username or email already exists")
 
 
 def update_user(db: Session, user: models.User, data: UserUpdate):
-    for field, value in data.model_dump(exclude_unset=True, exclude={"password"}).items():
+    task_shortcut = data.task_shortcut if data.task_shortcut is not None else user.task_shortcut
+    ai_shortcut = data.ai_shortcut if data.ai_shortcut is not None else user.ai_shortcut
+    if task_shortcut and task_shortcut == ai_shortcut:
+        raise HTTPException(status_code=422, detail="Skróty zadania i Asystenta AI muszą być różne.")
+    for field, value in data.model_dump(exclude_unset=True, exclude={"password", "confirm_password"}).items():
         setattr(user, field, value)
     if data.password is not None:
         user.password_hash = hash_password(data.password)
@@ -86,12 +106,14 @@ def create_subject(db: Session, data: SubjectCreate, user_uid: UUID):
     if _subject_name_exists(db, user_uid, data.name):
         raise HTTPException(status_code=409, detail="Subject with this name already exists")
     values = data.model_dump()
-    values["name"] = data.name.strip()
+    values["name"] = normalize_name(data.name)
+    values["tags"] = _clean_tags(data.tags)
     return _save(db, models.Subject(**values, user_uid=user_uid))
 
 
-def list_subjects(db: Session, user_uid: UUID, page: int, page_size: int, search: str | None):
+def list_subjects(db: Session, user_uid: UUID, page: int, page_size: int, search: str | None, archived: bool = False):
     query = select(models.Subject).where(models.Subject.user_uid == user_uid)
+    query = query.where(models.Subject.archived_at.is_not(None) if archived else models.Subject.archived_at.is_(None))
     if search:
         query = query.where(models.Subject.name.ilike(f"%{search}%"))
     return paginate(db, query.order_by(models.Subject.name, models.Subject.subject_uid), page, page_size)
@@ -104,8 +126,11 @@ def update_subject(db: Session, uid: UUID, user_uid: UUID, data: SubjectUpdate):
             raise HTTPException(status_code=422, detail="Subject name cannot be empty")
         if _subject_name_exists(db, user_uid, data.name, uid):
             raise HTTPException(status_code=409, detail="Subject with this name already exists")
-        data = data.model_copy(update={"name": data.name.strip()})
-    _update(value, data)
+        data = data.model_copy(update={"name": normalize_name(data.name)})
+    if data.tags is not None: data = data.model_copy(update={"tags": _clean_tags(data.tags)})
+    values = data.model_dump(exclude_unset=True, exclude={"archived"})
+    for field, field_value in values.items(): setattr(value, field, field_value)
+    if data.archived is not None: value.archived_at = datetime.now(timezone.utc) if data.archived else None
     return _save(db, value)
 
 
@@ -125,7 +150,7 @@ def get_topic(db: Session, uid: UUID, user_uid: UUID):
 
 def create_topic(db: Session, data: TopicCreate, user_uid: UUID):
     get_subject(db, data.subject_uid, user_uid)
-    return _save(db, models.Topic(**data.model_dump()))
+    return _save(db, models.Topic(**data.model_dump(exclude={"name"}), name=normalize_name(data.name)))
 
 
 def list_topics(db: Session, user_uid: UUID, subject_uid: UUID | None, page: int, page_size: int, difficulty: str | None, is_done: bool | None):
@@ -138,6 +163,7 @@ def list_topics(db: Session, user_uid: UUID, subject_uid: UUID | None, page: int
 
 def update_topic(db: Session, uid: UUID, user_uid: UUID, data: TopicUpdate):
     if data.subject_uid is not None: get_subject(db, data.subject_uid, user_uid)
+    if data.name is not None: data = data.model_copy(update={"name": normalize_name(data.name)})
     value = get_topic(db, uid, user_uid); _update(value, data); return _save(db, value)
 
 
@@ -156,7 +182,10 @@ def get_task(db: Session, uid: UUID, user_uid: UUID):
 
 def create_task(db: Session, data: TaskCreate, user_uid: UUID):
     get_topic(db, data.topic_uid, user_uid)
-    return _save(db, models.Task(**data.model_dump()))
+    user = db.get(models.User, user_uid)
+    values = data.model_dump()
+    values["deadline"] = _utc(data.deadline, user)
+    return _save(db, models.Task(**values))
 
 
 def list_tasks(db: Session, user_uid: UUID, topic_uid: UUID | None, page: int, page_size: int, priority: models.Priority | None, is_done: bool | None, search: str | None, sort: str, order: str):
@@ -172,7 +201,12 @@ def list_tasks(db: Session, user_uid: UUID, topic_uid: UUID | None, page: int, p
 
 def update_task(db: Session, uid: UUID, user_uid: UUID, data: TaskUpdate):
     if data.topic_uid is not None: get_topic(db, data.topic_uid, user_uid)
-    value = get_task(db, uid, user_uid); _update(value, data); return _save(db, value)
+    value = get_task(db, uid, user_uid)
+    if "deadline" in data.model_fields_set: data = data.model_copy(update={"deadline": _utc(data.deadline, db.get(models.User, user_uid))})
+    _update(value, data)
+    day = db.scalar(select(models.StudyPlanDay).where(models.StudyPlanDay.calendar_task_uid == uid))
+    if day is not None: day.is_done = value.is_done
+    return _save(db, value)
 
 
 def delete_task(db: Session, uid: UUID, user_uid: UUID):
@@ -197,7 +231,9 @@ def create_study_session(db: Session, data: StudySessionCreate, user_uid: UUID):
         task = get_task(db, data.task_uid, user_uid)
         if data.topic_uid is None or task.topic_uid != data.topic_uid:
             raise HTTPException(status_code=422, detail="Task does not belong to the selected topic")
-    return _save(db, models.StudySession(**data.model_dump(exclude_none=True)))
+    values = data.model_dump(exclude_none=True)
+    if data.started_at: values["started_at"] = _utc(data.started_at, db.get(models.User, user_uid))
+    return _save(db, models.StudySession(**values))
 
 
 def list_study_sessions(db: Session, user_uid: UUID, subject_uid: UUID | None, page: int, page_size: int):
@@ -220,6 +256,7 @@ def update_study_session(db: Session, uid: UUID, user_uid: UUID, data: StudySess
         task = get_task(db, task_uid, user_uid)
         if topic_uid is None or task.topic_uid != topic_uid:
             raise HTTPException(status_code=422, detail="Task does not belong to the selected topic")
+    if data.started_at: data = data.model_copy(update={"started_at": _utc(data.started_at, db.get(models.User, user_uid))})
     _update(value, data); return _save(db, value)
 
 

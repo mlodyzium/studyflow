@@ -15,8 +15,8 @@ def create(payload: SubjectCreate, db: Session = Depends(get_db), user: models.U
     return study.create_subject(db, payload, user.user_uid)
 
 @router.get("", response_model=Page[SubjectRead])
-def list_all(search: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    return study.list_subjects(db, user.user_uid, page, page_size, search)
+def list_all(search: str | None = None, archived: bool = False, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return study.list_subjects(db, user.user_uid, page, page_size, search, archived)
 
 @router.get("/{uid}", response_model=SubjectRead)
 def get_one(uid: UUID, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):

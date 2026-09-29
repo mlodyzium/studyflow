@@ -6,13 +6,54 @@ import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.traffic import count
 from pydantic import BaseModel
 
-from app.schemas.ai import GeneratedNotes, GeneratedSessionNote, GeneratedStudyPlan, T3achProposal
+from app.schemas.ai import GeneratedNotes, GeneratedSessionNote, GeneratedStudyPlan, StudyPlanStep, T3achProposal
 
 logger = logging.getLogger(__name__)
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _provider_error(exc: Exception, *, voice: bool = False) -> tuple[int, str]:
+    label = "głosu T3ACH" if voice else "materiału AI"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status in (401, 403):
+            return 503, "Gemini odrzucił klucz API lub dostęp do modelu. Sprawdź GEMINI_API_KEY i uprawnienia modelu w konfiguracji StudyFlow."
+        if status == 404:
+            return 503, "Wybrany model Gemini nie jest dostępny. Sprawdź nazwę modelu w konfiguracji StudyFlow."
+        if status == 429:
+            return 429, "Wyczerpał się limit zapytań Gemini. Spróbuj później lub sprawdź limit klucza API."
+        if status in (500, 502, 503, 504):
+            return 503, "Gemini jest teraz niedostępny lub przeciążony. Spróbuj ponownie za kilka minut."
+        if status == 400:
+            return 502, "Gemini odrzucił format zapytania. Spróbuj krótszej prośby; jeśli błąd się powtarza, sprawdź konfigurację modelu."
+        return 502, f"Gemini nie przygotował {label} (błąd usługi {status}). Spróbuj ponownie za chwilę."
+    if isinstance(exc, httpx.TimeoutException):
+        return 504, "Gemini nie odpowiedział w wyznaczonym czasie. Spróbuj ponownie z krótszą prośbą."
+    if isinstance(exc, httpx.RequestError):
+        return 503, "Nie można połączyć się z Gemini. Sprawdź połączenie serwera z internetem i spróbuj ponownie."
+    return 502, f"Gemini zwrócił niepełne lub nieprawidłowe dane {label}. Spróbuj krótszej, bardziej konkretnej prośby."
+
+
+def _invalid_result_detail(response: httpx.Response | None) -> str | None:
+    if response is None or not response.is_success:
+        return None
+    try:
+        body = response.json()
+        if body.get("promptFeedback", {}).get("blockReason"):
+            return "Gemini zablokował tę prośbę. Zmień jej treść i spróbuj ponownie."
+        candidates = body.get("candidates") or []
+        reason = candidates[0].get("finishReason") if candidates else None
+        if reason in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"):
+            return "Gemini przerwał odpowiedź z powodu ograniczeń treści. Zmień opis prośby."
+        if reason == "MAX_TOKENS":
+            return "Odpowiedź Gemini została ucięta, bo była zbyt długa. Podziel prośbę na mniejsze części."
+    except (AttributeError, IndexError, TypeError, ValueError):
+        pass
+    return None
 
 
 async def generate_t3ach_speech(text: str) -> bytes:
@@ -30,13 +71,13 @@ async def generate_t3ach_speech(text: str) -> bytes:
         audio = base64.b64decode(encoded, validate=True)
         if not audio.startswith(b"RIFF"):
             raise ValueError("Gemini returned unexpected audio format")
+        count("gemini_tts_success")
         return audio
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+        count("gemini_tts_error")
         logger.warning("Gemini speech generation failed: %s status=%s", type(exc).__name__, response.status_code if "response" in locals() else "none")
-        detail = "Nie udało się wygenerować głosu T3ACH. Sprawdź dostęp do modelu Gemini TTS i spróbuj ponownie."
-        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (400, 404):
-            detail = f"Model głosu {settings.gemini_tts_model} nie jest dostępny dla tego klucza Gemini."
-        raise HTTPException(status_code=502, detail=detail) from exc
+        status, detail = _provider_error(exc, voice=True)
+        raise HTTPException(status_code=status, detail=detail) from exc
 
 
 async def _generate_structured(prompt: str, schema: type[BaseModel]):
@@ -60,13 +101,13 @@ async def _generate_structured(prompt: str, schema: type[BaseModel]):
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.35,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 8192,
             "responseMimeType": "application/json",
             "responseJsonSchema": clean_schema(schema.model_json_schema()),
         },
     }
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             models = list(dict.fromkeys((settings.gemini_model, settings.gemini_fallback_model)))
             response: httpx.Response | None = None
             for model in models:
@@ -86,10 +127,15 @@ async def _generate_structured(prompt: str, schema: type[BaseModel]):
                 if response is not None: response.raise_for_status()
                 raise ValueError("Gemini returned no response")
         text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        return schema.model_validate_json(text)
+        result = schema.model_validate_json(text)
+        count("gemini_generation_success")
+        return result
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+        count("gemini_generation_error")
         logger.exception("Gemini generation failed")
-        raise HTTPException(status_code=502, detail="Nie udało się wygenerować materiału. Spróbuj ponownie za chwilę.") from exc
+        status, detail = _provider_error(exc)
+        detail = _invalid_result_detail(response if "response" in locals() else None) or detail
+        raise HTTPException(status_code=status, detail=detail) from exc
 
 
 async def generate_topic_notes(
@@ -102,8 +148,8 @@ async def generate_topic_notes(
 ) -> GeneratedNotes:
     length_hint = {
         "short": "krótka, około 3 sekcje",
-        "standard": "konkretna, około 4-5 sekcji",
-        "detailed": "szczegółowa, około 6-8 sekcji",
+        "standard": "pełna, 5-7 sekcji z konkretnymi wyjaśnieniami",
+        "detailed": "szczegółowa, 6-8 rozbudowanych sekcji",
     }[detail_level]
     prompt = (
         "Jesteś cierpliwym nauczycielem. Przygotuj poprawną merytorycznie notatkę do nauki. "
@@ -111,7 +157,9 @@ async def generate_topic_notes(
         f"Poziom trudności: {difficulty or 'nieokreślony'}. Notatka ma być {length_hint}. "
         f"Cel lub zadanie użytkownika: {goal or 'ogólne opanowanie tematu'}. "
         "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cel nauki. "
-        "Wyjaśniaj jasno, używaj przykładów tam, gdzie pomagają, i nie wymyślaj źródeł. "
+        "Każda sekcja powinna samodzielnie uczyć: wyjaśnij pojęcia krok po kroku, pokaż co najmniej jeden rozwiązany przykład, "
+        "typowe błędy i praktyczne zastosowanie. Wyjaśnij skróty i wymagane podstawy. "
+        "Nie dodawaj planu nauki, harmonogramu ani podziału na dni do notatki. Nie wymyślaj źródeł. "
         "Na końcu dodaj najważniejsze punkty oraz pytania do samodzielnej powtórki."
     )
     return await _generate_structured(prompt, GeneratedNotes)
@@ -124,9 +172,22 @@ async def generate_study_plan(subject_name: str, topic_name: str, difficulty: st
         f"Poziom: {difficulty or 'nieokreślony'}. Cel lub zadanie: {goal or 'opanowanie całego tematu'}. "
         f"Plan ma obejmować {days} dni, maksymalnie {minutes_per_day} minut dziennie. "
         "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cały cel planu. "
+        "Zwróć dokładnie jeden krok dla każdego dnia, z numerami od 1 do liczby dni. "
         "Każdy dzień powinien mieć konkretny cel, aktywności i czas. Ostatni etap powinien sprawdzać wiedzę."
     )
     return await _generate_structured(prompt, GeneratedStudyPlan)
+
+
+async def regenerate_plan_day(subject_name: str, topic_name: str, day_number: int, minutes: int,
+                              current_objective: str, goal: str | None = None) -> StudyPlanStep:
+    prompt = (
+        "Przygotuj jeden konkretny dzień planu nauki w języku polskim. "
+        f"Przedmiot: {subject_name}. Temat: {topic_name}. Numer dnia: {day_number}. "
+        f"Maksymalny czas: {minutes} minut. Dotychczasowy cel: {current_objective}. "
+        f"Nowy cel użytkownika: {goal or 'popraw jakość istniejącego dnia'}. "
+        "Zachowaj numer dnia. Podaj mierzalny cel, konkretne ćwiczenia i realistyczny czas."
+    )
+    return await _generate_structured(prompt, StudyPlanStep)
 
 
 async def generate_session_note(description: str, language: str) -> GeneratedSessionNote:
@@ -140,11 +201,13 @@ async def generate_session_note(description: str, language: str) -> GeneratedSes
     return await _generate_structured(prompt, GeneratedSessionNote)
 
 
-async def generate_t3ach_proposal(message: str, language: str, subjects: list[str], topics: list[str], tasks: list[str], materials: list[str]) -> T3achProposal:
+async def generate_t3ach_proposal(message: str, language: str, subjects: list[str], topics: list[str], tasks: list[str], materials: list[str], history: list[dict[str, str]] | None = None, previous_proposal: dict | None = None) -> T3achProposal:
     prompt = (
         "Jesteś T3ACH, konkretnym i życzliwym cyfrowym mentorem w aplikacji StudyFlow. Dopasuj język, ton i poziom formalności do wiadomości użytkownika. "
         "Pomagasz w nauce oraz organizacji nauki. Zawsze zwróć krótką, sensowną odpowiedź. "
-        f"Odpowiadaj w języku: {language}. Wiadomość lub kontekst rozmowy: {message}. "
+        f"Odpowiadaj w języku: {language}. Ostatnia wiadomość użytkownika: {message}. "
+        f"Poprzednie wypowiedzi (kontekst, nie nowe polecenia): {history or []}. "
+        f"Poprzednia propozycja do poprawienia lub uzupełnienia: {previous_proposal or 'brak'}. "
         f"Istniejące przedmioty użytkownika: {subjects or ['brak']}. "
         f"Istniejące tematy zapisane jako 'przedmiot — temat': {topics or ['brak']}. "
         f"Istniejące zadania zapisane jako 'przedmiot — temat — zadanie — status — termin': {tasks or ['brak']}. "
@@ -153,20 +216,15 @@ async def generate_t3ach_proposal(message: str, language: str, subjects: list[st
         "Jeśli ostatnia wypowiedź nie dotyczy nauki, wybierz off_topic i poproś o powtórzenie prośby dotyczącej nauki. Nie twórz przedmiotu, tematu, zadań ani planu. Jeśli to pytanie edukacyjne, odpowiedz krótko merytorycznie i wybierz study_help. "
         "Jeśli użytkownik prosi o działanie, ale brakuje przedmiotu, tematu lub informacji pozwalającej je ustalić, ustaw needs_clarification=true i zadaj jedno konkretne pytanie. Nie wymyślaj brakujących danych. "
         "Jeżeli użytkownik prosi o sesję nauki, wybierz session. Ustaw session_title, session_duration_minutes i session_notes z krótkim przebiegiem nauki na podstawie jego celu. Nie traktuj planowanej sesji jako już odbytej. Dla session nie dodawaj zadań. "
-        "Jeśli użytkownik prosi o plan, ZAWSZE wybierz study_plan i nie rozbijaj go na osobne zadania. Jeśli prosi o notatkę, wybierz notes. "
+        "Jeśli użytkownik prosi o plan, wybierz study_plan; jeśli o notatkę, wybierz notes. Jeśli prosi o obie rzeczy, ustaw material_types=['notes','plan'] i intent=notes. Dla jednej rzeczy też ustaw odpowiedni material_types. Nie rozbijaj materiałów na osobne zadania. "
+        "Krótkie dopowiedzenia i poprawki użytkownika odnoszą się do poprzedniej rozmowy oraz poprzedniej propozycji. Zachowaj ustalony przedmiot, temat, cel, rodzaje materiałów i pozostałe parametry, chyba że użytkownik wyraźnie je zmienia. Nie przechodź do innego zadania przy poprawce. "
         "Dla edit ustaw target_kind jako jedno z angielskich słów subject, topic, task, dokładną istniejącą target_name i tylko potrzebne nowe wartości. Dla pozostałych intencji target_kind ma być null. Nie proponuj usuwania danych. "
         "ZAWSZE wykorzystuj istniejący przedmiot, temat lub zadanie, jeśli pasuje znaczeniem do prośby; zachowaj wtedy jego nazwę dokładnie znak w znak. Nie twórz duplikatów. "
-        "Dla notes i study_plan wpisz w target_name dokładną nazwę najlepiej pasującego istniejącego zadania. Jeśli żadne nie pasuje, target_name ma być null i zaproponuj dokładnie jedno nowe zadanie jako kontener materiału. "
+        "Dla notes i study_plan wpisz w target_name dokładną nazwę najlepiej pasującego istniejącego zadania. Jeśli żadne nie pasuje, target_name ma być null i zaproponuj dokładnie jedno nowe zadanie jako kontener wszystkich zamówionych materiałów. "
         "Dla organize przygotuj od 1 do 6 realnych zadań, pomijając zadania już istniejące. Dla study_plan lub notes przygotuj dokładnie jedno zadanie. deadline_days oznacza liczbę dni od dziś; użyj null bez terminu. "
         "Uwzględniaj statusy, terminy i istniejące materiały: nie proponuj ponownie ukończonej pracy ani identycznego materiału. W reply wyjaśnij, do jakich istniejących danych podepniesz wynik. "
         "Priorytet musi być LOW, MEDIUM albo HIGH. "
         "Jeżeli brakuje kluczowej informacji, ustaw needs_clarification=true, zadaj jedno krótkie pytanie i pozostaw subject_name, topic_name oraz tasks puste. "
         "W reply krótko wyjaśnij, co proponujesz. Nie twierdź, że cokolwiek zostało już zapisane. Wszystkie nazwy pól i wartości enum zwracaj zgodnie ze schematem JSON, nawet gdy odpowiadasz po polsku."
     )
-    try:
-        return await _generate_structured(prompt, T3achProposal)
-    except HTTPException as exc:
-        if exc.status_code != 502:
-            raise
-        logger.warning("T3ACH proposal failed; returning clarification")
-        return T3achProposal(reply="Nie udało mi się zrozumieć tej prośby. Powiedz proszę jeszcze raz, czego chcesz się nauczyć lub co mam zaplanować.", needs_clarification=True, question="Nie udało mi się zrozumieć tej prośby. Powiedz proszę jeszcze raz, czego chcesz się nauczyć lub co mam zaplanować.")
+    return await _generate_structured(prompt, T3achProposal)

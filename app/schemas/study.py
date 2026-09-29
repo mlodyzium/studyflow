@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from app.models import Priority
 
 class OrmSchema(BaseModel):
@@ -10,18 +11,68 @@ class OrmSchema(BaseModel):
 class UserCreate(BaseModel):
     username: str = Field(min_length=2, max_length=50)
     password: str = Field(min_length=8, max_length=128)
+    confirm_password: str | None = Field(default=None, exclude=True)
     email: EmailStr | None = None
+    timezone: str = Field(default="Europe/Warsaw", max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        try: ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc: raise ValueError("Nieznana strefa czasowa.") from exc
+        return value
+
+    @field_validator("username")
+    @classmethod
+    def clean_username(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2 or any(char.isspace() for char in value):
+            raise ValueError("Nazwa użytkownika musi mieć co najmniej 2 znaki i nie może zawierać spacji.")
+        return value
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("Hasła muszą być identyczne.")
+        return self
 
 class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=2, max_length=50)
-    password: str | None = Field(default=None, min_length=8)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    confirm_password: str | None = Field(default=None, exclude=True)
     email: EmailStr | None = None
+    timezone: str | None = Field(default=None, max_length=64)
+    preferred_minutes: int | None = Field(default=None, ge=10, le=240)
+    preferred_study_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    task_shortcut: str | None = Field(default=None, max_length=30)
+    ai_shortcut: str | None = Field(default=None, max_length=30)
+    onboarding_complete: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str | None) -> str | None:
+        if value is None: return None
+        try: ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc: raise ValueError("Nieznana strefa czasowa.") from exc
+        return value
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("Hasła muszą być identyczne.")
+        return self
 
 class UserRead(OrmSchema):
     user_uid: UUID
     username: str
     email: EmailStr | None
     created_at: datetime
+    timezone: str
+    preferred_minutes: int
+    preferred_study_time: str
+    task_shortcut: str
+    ai_shortcut: str
+    onboarding_complete: bool
 
 class LoginRequest(BaseModel):
     username: str
@@ -34,27 +85,53 @@ class TokenRead(BaseModel):
 class SubjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     exam_date: date | None = None
+    color: str = Field(default="#c8f05a", pattern=r"^#[0-9a-fA-F]{6}$")
+    tags: list[str] = Field(default_factory=list, max_length=10)
 
 class SubjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     exam_date: date | None = None
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    tags: list[str] | None = Field(default=None, max_length=10)
+    archived: bool | None = None
 
 class SubjectRead(OrmSchema):
     subject_uid: UUID
     name: str
     user_uid: UUID
     exam_date: date | None
+    color: str
+    tags: list[str]
+    archived_at: datetime | None
 
 class TopicCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     subject_uid: UUID
     difficulty: str | None = Field(default=None, max_length=20)
 
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Topic name cannot be empty")
+        return value
+
 class TopicUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     subject_uid: UUID | None = None
     difficulty: str | None = Field(default=None, max_length=20)
     is_done: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Topic name cannot be empty")
+        return value
 
 class TopicRead(OrmSchema):
     topic_uid: UUID
@@ -70,6 +147,14 @@ class TaskCreate(BaseModel):
     priority: Priority = Priority.MEDIUM
     notes: str | None = None
 
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Task title cannot be empty")
+        return value
+
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     topic_uid: UUID | None = None
@@ -77,6 +162,16 @@ class TaskUpdate(BaseModel):
     deadline: datetime | None = None
     priority: Priority | None = None
     notes: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Task title cannot be empty")
+        return value
 
 class TaskRead(OrmSchema):
     task_uid: UUID
