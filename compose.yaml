@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-studyflow}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     environment:
       APP_NAME: ${APP_NAME:-StudyFlow API}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-secret-change-this-123456789}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       DB_USER: ${DB_USER:-postgres}
@@ -34,8 +34,15 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
       GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-flash-latest}
+      AI_RATE_LIMIT_PER_DAY: ${AI_RATE_LIMIT_PER_DAY:-300}
+      TTS_RATE_LIMIT_PER_DAY: ${TTS_RATE_LIMIT_PER_DAY:-500}
+      LOGIN_RATE_LIMIT_PER_15_MIN: ${LOGIN_RATE_LIMIT_PER_15_MIN:-240}
+      FAILED_LOGIN_LIMIT: ${FAILED_LOGIN_LIMIT:-20}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      REGISTRATION_RATE_LIMIT_PER_DAY: ${REGISTRATION_RATE_LIMIT_PER_DAY:-40}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -52,10 +59,27 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
+
+  lan-https:
+    image: caddy:2-alpine
+    profiles: ["lan"]
+    environment:
+      LAN_HOST: ${LAN_HOST:-localhost}
+      LAN_HTTPS_PORT: ${LAN_HTTPS_PORT:-8443}
+    ports:
+      - "${LAN_HTTPS_PORT:-8443}:${LAN_HTTPS_PORT:-8443}"
+    volumes:
+      - ./docker/Caddyfile.lan:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
     restart: unless-stopped
 
   db-test:
@@ -88,3 +112,5 @@ services:
 
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

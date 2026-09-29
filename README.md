@@ -10,15 +10,17 @@ Projekt zawiera responsywny frontend React, REST API w FastAPI, bazę PostgreSQL
 
 - rejestracja, logowanie, edycja profilu i lokalne zdjęcie profilowe,
 - izolacja danych pomiędzy użytkownikami,
-- przedmioty z opcjonalną datą egzaminu,
+- przedmioty z datą egzaminu, własnym kolorem i tagami; zakończone można archiwizować,
 - tematy przypisane do przedmiotów,
 - zadania z terminem, priorytetem, statusem i prywatną notatką,
-- filtrowanie zadań po przedmiocie, temacie, statusie i priorytecie,
+- filtrowanie zadań po przedmiocie, temacie, statusie, priorytecie i terminie; zbiorcze kończenie i duplikowanie,
 - sesje nauki z własnym tytułem, czasem, notatką i powiązaniem z wybranym zasobem,
 - generator AI, który z kilku słów tworzy tytuł i uporządkowaną notatkę z sesji,
 - historia sesji i licznik kolejnych dni nauki,
-- kalendarz z egzaminami oraz terminami zadań,
-- dashboard z postępem, najbliższymi zadaniami i aktywnymi przedmiotami,
+- kalendarz z egzaminami, zadaniami i dniami planów, przeciąganiem zadań oraz eksportem iCalendar (`.ics`),
+- bezpośrednie dodawanie pojedynczych wydarzeń do Google Calendar,
+- dashboard z planem na dziś, zaległymi zadaniami, egzaminami i powtórkami,
+- kreator pierwszego planu nauki, osobny czas i opcjonalna godzina dla każdego dnia oraz konfigurowalny skrót do nowego zadania,
 - jasny i ciemny motyw,
 - pięć gotowych kolorów interfejsu oraz możliwość wybrania własnego koloru z palety,
 - płynne przejścia pomiędzy motywami i zapamiętywanie ustawień w przeglądarce,
@@ -32,16 +34,18 @@ Asystent wykorzystuje Gemini i oferuje dwa tryby:
 - **Notatka** — podsumowanie, sekcje tematyczne, najważniejsze punkty i pytania kontrolne.
 - **Plan nauki** — harmonogram rozłożony na dni, z celami, aktywnościami i czasem pracy.
 
-Przed generowaniem użytkownik wybiera rodzaj materiału i przedmiot. Pola tematu oraz zadania działają jako „wybierz albo wpisz”: można wskazać istniejący element lub wpisać nowy. Nowa nazwa tematu tworzy temat automatycznie, a własny opis celu powoduje utworzenie zadania z krótkim tytułem dobranym przez AI. Dla notatki można ustawić poziom szczegółowości, a dla planu liczbę dni i czas nauki dziennie.
+Przed generowaniem użytkownik wybiera rodzaj materiału i przedmiot. Pola tematu oraz zadania działają jako „wybierz albo wpisz”: można wskazać istniejący element lub wpisać nowy. Nowa nazwa tematu tworzy temat automatycznie. Generowanie notatki może utworzyć zadanie z krótkim tytułem dobranym przez AI; sam plan ma oddzielne dni bez dodatkowego zadania. Dla notatki można ustawić poziom szczegółowości, a dla planu liczbę dni i czas nauki dziennie.
 
-Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania. Każdy poprawny wynik jest automatycznie zapisywany w PostgreSQL i dostępny później przez **Historia materiałów** na dashboardzie.
+Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania. Każdy poprawny wynik jest zapisywany w PostgreSQL i dostępny później przez **Historia materiałów** na dashboardzie. Przy błędzie formularz zachowuje wpisane dane, pozwala ponowić próbę, zapisać własną notatkę lub utworzyć prosty plan bez AI.
+
+Notatki można pobrać jako Markdown albo otworzyć widok wydruku i zapisać jako PDF. Każda nowa notatka trafia też do kolejki powtórek. Plan ma osobne dni z postępem; można je kończyć, przesuwać, duplikować i poprawiać pojedynczo. Dni planu są widoczne w kalendarzu, a osobne zadania kalendarzowe tworzy się na życzenie.
 
 Materiały są również wiązane z zadaniami:
 
 - wygenerowana notatka pojawia się w czytelnej sekcji **Materiały AI** w szczegółach zadania,
-- plan nauki pojawia się w tej samej sekcji jako rozwijany, przypisany do zadania materiał,
+- plan nauki pojawia się w tej samej sekcji jako rozwijany materiał, jeśli był powiązany z zadaniem,
 - szczegóły zadania pokazują oddzielnie notatki ze wszystkich powiązanych sesji nauki,
-- jeśli użytkownik nie wybierze istniejącego zadania, StudyFlow automatycznie tworzy nowe zadanie z krótkim tytułem zaproponowanym przez AI.
+- prośba o sam plan nie tworzy automatycznie zadań; użytkownik może utworzyć je później przyciskiem przy planie.
 
 Backend AI:
 
@@ -63,7 +67,7 @@ T3ACH jest konwersacyjną warstwą nad StudyFlow. Użytkownik opisuje naturalnym
 - pokazuje cały plan przed wykonaniem,
 - zapisuje dane dopiero po kliknięciu **Zatwierdź i zapisz w StudyFlow**.
 
-Generowanie propozycji i jej wykonanie są rozdzielone na dwa endpointy. Backend ponownie waliduje zatwierdzony plan i przypisuje dane wyłącznie do zalogowanego użytkownika. Dotychczasowe generatory notatek i planów pozostają dostępne bezpośrednio z panelu T3ACH.
+Generowanie propozycji i jej wykonanie są rozdzielone na dwa endpointy. Backend zapisuje propozycję i zatwierdza ją po identyfikatorze; sprawdza właściciela oraz blokuje ponowne wykonanie. Dotychczasowe generatory notatek i planów pozostają dostępne bezpośrednio z panelu T3ACH.
 
 ### AI w sesjach nauki
 
@@ -85,22 +89,22 @@ StudyFlow rozdziela tryb jasny/ciemny od koloru przewodniego. Użytkownik może 
 
 Wybrany kolor obejmuje cały interfejs: dashboard, przyciski, formularze, filtry, kalendarz, sesje, strony szczegółów, materiały AI, obramowania, poświaty i gradient podążający za kursorem. Aplikacja automatycznie wylicza jaśniejsze tła oraz kontrastowe kolory tekstu. Zmiana jest animowana, a ustawienia są przechowywane w `localStorage`.
 
-Przełącznik jasnego i ciemnego wariantu pozostaje bezpośrednio na pasku bocznym. Paleta kolorów znajduje się w centralnym panelu konta otwieranym przez profil z ikoną zębatki.
+Przełącznik jasnego i ciemnego wariantu oraz paleta kolorów są widoczne na lewym pasku, nad profilem.
 
-## Profil i centrum ustawień
+## Konto i ustawienia użytkownika
 
-Kliknięcie profilu na dole lewego paska otwiera wyśrodkowany panel ustawień. Z jednego miejsca można:
+Kliknięcie profilu na dole lewego paska otwiera menu z osobnymi oknami **Ustawienia konta** i **Ustawienia użytkownika**. W pierwszym można:
 
-- przejść do edycji nazwy użytkownika, adresu e-mail i hasła,
-- wgrać, zmienić albo usunąć zdjęcie profilowe,
-- wybrać gotowy kolor interfejsu lub własny kolor z palety,
-- ponownie uruchomić samouczek.
+- edytować nazwę użytkownika, adres e-mail i hasło,
+- wgrać, zmienić albo usunąć zdjęcie profilowe.
+
+W ustawieniach użytkownika można wybrać strefę czasową z listy, sugerowany czas nauki na dzień oraz osobne skróty klawiszowe do nowego zadania i Asystenta AI. Menu profilu pozwala także ponownie uruchomić samouczek.
 
 Zdjęcie profilowe może mieć maksymalnie 2 MB. Jest zapisywane w pamięci lokalnej przeglądarki osobno dla identyfikatora konta — nie trafia do API ani PostgreSQL i nie synchronizuje się pomiędzy urządzeniami. Jeśli zdjęcie nie zostało ustawione, aplikacja pokazuje inicjały użytkownika.
 
 ## Samouczek pierwszego logowania
 
-Po rejestracji i pierwszym zalogowaniu uruchamia się interaktywny samouczek. W jedenastu krokach automatycznie przełącza widoki, przewija stronę i podświetla omawiany element dopasowaną poświatą. Obejmuje dashboard, przedmioty, tematy, zadania, sesje, kalendarz, szybki zapis nauki, Asystenta AI, tryb jasny/ciemny oraz centrum ustawień konta. Komunikat płynnie przemieszcza się pomiędzy pozycjami, można cofać kroki, przechodzić dalej albo pominąć całość.
+Po rejestracji i pierwszym zalogowaniu uruchamia się interaktywny samouczek. W jedenastu krokach pokazuje dashboard, przedmioty, tematy, zadania, sesje, kalendarz, szybki zapis nauki, Asystenta AI, motyw oraz menu konta. Po nim kreator pozwala ustawić własny skrót, dodać pierwszy przedmiot i przygotować materiał. Można cofać kroki lub pominąć samouczek.
 
 Samouczek nie uruchamia się automatycznie podczas zwykłego logowania. Aby wrócić do niego później, kliknij profil z zębatką na lewym pasku i wybierz **Uruchom samouczek**.
 
@@ -179,6 +183,20 @@ Compose uruchamia:
 
 API czeka na bazę, automatycznie wykonuje `alembic upgrade head`, a następnie startuje. Nginx obsługuje SPA i przekazuje `/api/*` do FastAPI.
 
+### HTTPS na innym urządzeniu w sieci lokalnej
+
+W `.env` wpisz adres IP komputera, na którym działa Docker, np. `LAN_HOST=192.168.1.100`. Następnie uruchom profil LAN:
+
+```sh
+docker compose --profile lan up -d --build
+mkdir -p .local
+docker compose cp lan-https:/data/caddy/pki/authorities/local/root.crt .local/studyflow-lan-ca.crt
+```
+
+Na telefonie lub drugim komputerze połączonym z tą samą siecią otwórz `https://192.168.1.100:8443` (podstaw adres z `LAN_HOST`). Serwer Caddy używa lokalnego urzędu certyfikacji. Aby przeglądarka uznała połączenie za bezpieczne i udostępniła mikrofon, zaimportuj plik `.local/studyflow-lan-ca.crt` na drugim urządzeniu jako zaufany certyfikat główny. Samo wejście na stronę mimo ostrzeżenia o certyfikacie może nie wystarczyć dla mikrofonu. Na iOS po instalacji profilu włącz pełne zaufanie w ustawieniach certyfikatów; na Androidzie zaimportuj certyfikat CA w ustawieniach zabezpieczeń. Aplikacja może też zapytać o uprawnienie do mikrofonu.
+
+Zwykły HTTP, API i PostgreSQL są dostępne tylko przez `localhost` komputera z Dockerem. Jeśli adres IP komputera się zmieni, popraw `LAN_HOST` i uruchom ponownie `lan-https`. Plik `.local/` jest ignorowany przez Git; nie publikuj kluczy prywatnych z wolumenu Caddy.
+
 Zatrzymanie:
 
 ```powershell
@@ -211,9 +229,18 @@ docker compose down -v
 | `API_PORT` | `8000` | Port API na hoście |
 | `FRONTEND_PORT` | `5173` | Port aplikacji |
 | `POSTGRES_PORT` | `5433` | Port bazy na hoście |
+| `LAN_HOST` | `localhost` | Adres IP komputera w sieci lokalnej dla HTTPS |
+| `LAN_HTTPS_PORT` | `8443` | Port HTTPS w sieci lokalnej |
 | `GEMINI_API_KEY` | brak | Prywatny klucz Gemini |
 | `GEMINI_MODEL` | `gemini-flash-lite-latest` | Główny model AI |
 | `GEMINI_FALLBACK_MODEL` | `gemini-flash-latest` | Model awaryjny |
+| `AI_RATE_LIMIT_PER_DAY` | `300` | Dzienny limit generowania na konto |
+| `TTS_RATE_LIMIT_PER_DAY` | `500` | Dzienny limit mowy na konto |
+| `LOGIN_RATE_LIMIT_PER_15_MIN` | `240` | Dodatkowy limit wszystkich prób logowania na nazwę konta |
+| `FAILED_LOGIN_LIMIT` | `20` | Liczba błędnych haseł w 15 minut przed blokadą |
+| `LOGIN_LOCK_MINUTES` | `15` | Czas automatycznej blokady konta |
+| `REGISTRATION_RATE_LIMIT_PER_DAY` | `40` | Limit rejestracji na adres IP |
+| `METRICS_TOKEN` | pusty | Sekret do `/internal/metrics`; pusty wyłącza endpoint |
 
 Przykład:
 
@@ -256,7 +283,7 @@ Plik `.env` zawiera sekrety, jest ignorowany przez Git i nie powinien być publi
 5. Dodaj zadanie lub otwórz Asystenta AI.
 6. Zapisuj sesje nauki ręcznie lub wygeneruj ich tytuł i notatkę z krótkiego opisu przez AI.
 7. Na lewym pasku wybierz jasny/ciemny tryb.
-8. Kliknij profil z zębatką, aby ustawić zdjęcie profilowe, kolor interfejsu albo ponownie uruchomić samouczek.
+8. Kolor interfejsu zmienisz nad profilem; kliknij profil z zębatką, aby ustawić zdjęcie albo ponownie uruchomić samouczek.
 
 Hierarchia danych:
 
@@ -406,8 +433,13 @@ Aktualny łańcuch:
 
 - `20260907_01` — podstawowe tabele,
 - `20260907_02` — notatki zadań i kontekst sesji,
-- `20260908_03` — historia materiałów AI.
-- `20260911_04` — tytuły sesji nauki.
+- `20260908_03` — historia materiałów AI,
+- `20260911_04` — tytuły sesji nauki,
+- `20260913_05` — historia rozmów T3ACH,
+- `20260929_06` — plany, powtórki i preferencje,
+- `20260929_07` — czasowa blokada logowania,
+- `20260929_08` — godzina i czas trwania każdego dnia planu,
+- `20260929_09` — skrót klawiszowy Asystenta AI.
 
 Polecenia:
 
@@ -615,7 +647,7 @@ docker compose logs api
 docker compose exec api alembic current
 ```
 
-Aktualna rewizja powinna wynosić `20260911_04`.
+Aktualna rewizja powinna wynosić `20260929_09`.
 
 ### Port jest zajęty
 
@@ -641,10 +673,10 @@ Healthcheck odpytuje Nginx pod `http://127.0.0.1/` wewnątrz kontenera.
 - użyj losowego `JWT_SECRET_KEY` i silnego hasła PostgreSQL,
 - ogranicz `CORS_ORIGINS` do własnej domeny,
 - przed publicznym wdrożeniem skonfiguruj HTTPS,
-- przed publicznym demo dodaj rate limiting i limit kosztów AI,
+- przy publicznym wdrożeniu dodaj trwały, współdzielony licznik limitów oraz kontrolę kosztów AI,
 - traktuj materiały AI jako pomoc, a nie gwarantowane źródło wiedzy.
 
-Projekt portfolio nie ma jeszcze refresh tokenów, unieważniania sesji, rate limitingu ani panelu administratora.
+Projekt portfolio nie ma jeszcze refresh tokenów, unieważniania sesji ani panelu administratora. Po 20 błędnych hasłach w ciągu 15 minut konto blokuje się na 15 minut; blokada jest zapisana w bazie i wygasa automatycznie. Poprawne logowanie zeruje licznik błędów. Dodatkowe limity wszystkich żądań są trzymane w pamięci procesu API i zerują się po restarcie. `/health/ready` sprawdza bazę oraz aktualność migracji, a `/internal/metrics` udostępnia liczniki po ustawieniu sekretu.
 
 ## Legacy CLI
 
@@ -661,10 +693,9 @@ Używa pliku JSON zamiast PostgreSQL i jest oddzielona od aplikacji webowej.
 - głosowy asystent w stylu „Jarvisa”,
 - chatbot korzystający z kontekstu postępów użytkownika,
 - quizy, fiszki i zadania generowane przez AI,
-- zapis planu AI bezpośrednio jako zadania w kalendarzu,
-- wyszukiwanie i usuwanie historii AI,
+- wyszukiwanie w historii AI,
 - streaming odpowiedzi,
-- rate limiting i statystyki użycia,
+- współdzielone limity oraz bardziej szczegółowe statystyki użycia,
 - refresh tokeny,
 - testy end-to-end frontendu.
 

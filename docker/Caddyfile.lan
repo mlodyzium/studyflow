@@ -1,0 +1,9 @@
+{
+    auto_https disable_redirects
+    default_sni {$LAN_HOST}
+}
+
+https://{$LAN_HOST}:{$LAN_HTTPS_PORT} {
+    tls internal
+    reverse_proxy frontend:80
+}
