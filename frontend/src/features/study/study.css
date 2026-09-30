@@ -77,6 +77,30 @@
 .first-run-shortcut label svg{display:inline-block;color:var(--study-accent-text)}
 .first-run-shortcut>small{font-size:11px;color:var(--muted)}
 .first-run-shortcut>.secondary{justify-self:start}
+.review-wizard{width:min(880px,100%)}
+.review-intro{font-size:12px;line-height:1.6;color:var(--muted);margin:0 0 16px}
+.review-tabs{display:flex;gap:8px;margin:16px 0}
+.review-tabs button{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:9px 13px;font-size:12px;font-weight:700}
+.review-tabs button.selected{border-color:var(--accent);background:var(--study-soft)}
+.review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}
+.review-toolbar>div{display:flex;flex-wrap:wrap;gap:7px}
+.review-toolbar button{display:inline-flex;align-items:center;gap:5px;padding:8px 10px;font-size:11px}
+.review-content{max-height:50vh;overflow-y:auto;border:1px solid var(--line);border-radius:15px;background:var(--panel);padding:18px}
+.review-preview h3{margin:0 0 14px;font-size:18px}
+.review-preview h4{margin:18px 0 6px;font-size:13px}
+.review-preview p,.review-preview li{font-size:12px;line-height:1.65;white-space:pre-wrap}
+.review-preview article{border-top:1px solid var(--line);padding:13px 0}
+.review-preview article:first-of-type{border-top:0}
+.review-preview article strong,.review-date{font-size:11px;color:var(--study-accent-text)}
+.review-preview ul,.review-preview ol{padding-left:20px}
+.review-editor label{display:block;margin:10px 0;font-size:11px}
+.review-editor label small{font-weight:400;color:var(--muted)}
+.review-editor textarea{min-height:84px;resize:vertical}
+.review-edit-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
+.review-edit-card>strong{font-size:12px}
+.review-wizard .first-run-actions{align-items:center}
+.review-wizard .first-run-actions .primary{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+@media(max-width:700px){.review-toolbar{align-items:flex-start;flex-direction:column}.review-content{max-height:48vh}.review-wizard .first-run-actions{align-items:stretch}}
 .profile-modal>.accent-picker{margin:12px 0}
 .sidebar .sidebar-accent{order:6;width:100%;flex:none;position:relative;z-index:44}
 .sidebar .sidebar-accent .accent-picker{position:relative;left:auto;bottom:auto;order:initial;width:100%;margin:8px 0 0}

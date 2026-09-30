@@ -10,6 +10,7 @@ class NoteGenerationRequest(BaseModel):
     detail_level: str = Field(default="standard", pattern="^(short|standard|detailed)$")
     task_uid: UUID | None = None
     custom_goal: str | None = Field(default=None, max_length=500)
+    preview_only: bool = False
 
 
 class NoteSection(BaseModel):
@@ -35,10 +36,12 @@ class PlanGenerationRequest(BaseModel):
     local_date: date | None = None
     local_hour: int | None = Field(default=None, ge=0, le=23)
     sent_at: datetime | None = None
+    preview_only: bool = False
 
 
 class StudyPlanStep(BaseModel):
     day: int = Field(ge=1, le=30)
+    scheduled_date: date | None = None
     title: str = Field(min_length=1, max_length=160)
     objective: str = Field(min_length=1, max_length=1000)
     activities: list[str] = Field(min_length=1, max_length=8)
@@ -53,6 +56,18 @@ class GeneratedStudyPlan(BaseModel):
     success_criteria: list[str] = Field(min_length=1, max_length=8)
     start_date: date | None = None
     plan_uid: UUID | None = None
+
+
+class MaterialApprovalRequest(BaseModel):
+    notes: GeneratedNotes | None = None
+    plan: GeneratedStudyPlan | None = None
+    minutes_per_day: int = Field(default=45, ge=10, le=240)
+
+    @model_validator(mode="after")
+    def require_material(self):
+        if self.notes is None and self.plan is None:
+            raise ValueError("Wybierz notatkę lub plan do zapisania.")
+        return self
 
 
 class ManualNoteRequest(BaseModel):
@@ -112,6 +127,8 @@ class T3achPreviousTask(BaseModel):
 
 class T3achPreviousProposal(BaseModel):
     original_request: str | None = Field(default=None, max_length=3000)
+    previous_answer: str | None = Field(default=None, max_length=4000)
+    previous_material: str | None = Field(default=None, max_length=6000)
     intent: str = Field(max_length=30)
     subject_name: str | None = Field(default=None, max_length=100)
     topic_name: str | None = Field(default=None, max_length=100)
@@ -124,6 +141,10 @@ class T3achPreviousProposal(BaseModel):
     material_types: list[Literal["notes", "plan"]] = Field(default_factory=list, max_length=2)
     days: int | None = Field(default=None, ge=1, le=30)
     minutes_per_day: int | None = Field(default=None, ge=10, le=240)
+    excluded_weekdays: list[int] = Field(default_factory=list, max_length=7)
+    exam_date: date | None = None
+    requested_plan_days: int | None = Field(default=None, ge=1, le=30)
+    plan_total_minutes: int | None = Field(default=None, ge=10, le=7200)
     session_title: str | None = Field(default=None, max_length=160)
     session_duration_minutes: int | None = Field(default=None, ge=1, le=240)
     session_notes: str | None = Field(default=None, max_length=500)
@@ -180,6 +201,10 @@ class T3achProposal(BaseModel):
     new_is_done: bool | None = None
     days: int = Field(default=7, ge=0, le=30)
     minutes_per_day: int = Field(default=45, ge=0, le=240)
+    excluded_weekdays: list[int] = Field(default_factory=list, max_length=7)
+    exam_date: date | None = None
+    requested_plan_days: int | None = Field(default=None, ge=1, le=30)
+    plan_total_minutes: int | None = Field(default=None, ge=10, le=7200)
     session_title: str | None = Field(default=None, max_length=160)
     session_notes: str | None = Field(default=None, max_length=3000)
     session_duration_minutes: int | None = Field(default=None, ge=1, le=240)
@@ -207,6 +232,13 @@ class T3achProposal(BaseModel):
         if isinstance(value, str):
             return {"niski": "LOW", "średni": "MEDIUM", "sredni": "MEDIUM", "wysoki": "HIGH"}.get(value.strip().casefold(), value.strip().upper())
         return value
+
+    @field_validator("excluded_weekdays")
+    @classmethod
+    def validate_excluded_weekdays(cls, value):
+        if any(day < 0 or day > 6 for day in value):
+            raise ValueError("Dni tygodnia muszą mieć wartości od 0 do 6.")
+        return sorted(set(value))
 
     @model_validator(mode="after")
     def normalize_optional_agent_fields(self):

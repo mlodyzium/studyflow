@@ -10,7 +10,7 @@ import {TimezoneField} from "./features/study/TimezoneField";
 import {SubjectsView} from "./features/study/SubjectsView";
 import {AiAssistantV2,VoiceT3ach,type T3achMemory} from "./features/ai/Assistant";
 import {AiHistoryModalV2,TaskAiMaterials} from "./features/ai/Materials";
-import {matchesShortcut,shortcutFromKey} from "./shortcut";
+import {matchesShortcut,shortcutFromKey,shortcutsConflict} from "./shortcut";
 
 type View = "overview" | "subjects" | "topics" | "tasks" | "calendar" | "sessions" | "topic-detail" | "task-detail" | "session-detail";
 type Modal = "subject" | "topic" | "task" | "session" | null;
@@ -166,8 +166,17 @@ function ProfileForm({ user, avatar, changeAvatar, close, done, logout }: { user
 
 function PreferencesForm({user,close,done}:{user:User;close:()=>void;done:()=>void}){
   const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [minutes,setMinutes]=useState(String(user.preferred_minutes));const [shortcut,setShortcut]=useState(user.task_shortcut);const [aiShortcut,setAiShortcut]=useState(user.ai_shortcut);
-  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const amount=Number(minutes);if(!Number.isInteger(amount)||amount<10||amount>240){setError("Wpisz czas od 10 do 240 minut.");return}if(shortcut&&shortcut===aiShortcut){setError("Skróty zadania i Asystenta AI muszą być różne.");return}setBusy(true);setError("");try{await api.updateMe({timezone:String(new FormData(event.currentTarget).get("timezone")),preferred_minutes:amount,task_shortcut:shortcut,ai_shortcut:aiShortcut});done()}catch(err){setError(err instanceof Error?err.message:"Nie udało się zapisać ustawień.")}finally{setBusy(false)}}
-  return <div className="modal-backdrop" onMouseDown={close}><form className="modal profile-modal" onSubmit={submit} onMouseDown={event=>event.stopPropagation()}><button className="icon close" type="button" onClick={close}><X/></button><span className="kicker">USTAWIENIA UŻYTKOWNIKA</span><h2>Nauka i skróty</h2><TimezoneField value={user.timezone}/><label>Sugerowany czas nauki na dzień<input name="minutes" type="text" inputMode="numeric" pattern="[0-9]+" value={minutes} onChange={event=>setMinutes(event.target.value.replace(/\D/g,""))} placeholder="np. 45"/><small className="field-hint">To punkt wyjścia dla AI. Każdy dzień planu możesz później ustawić osobno.</small></label><label>Skrót dodawania zadania<input value={shortcut} readOnly onKeyDown={event=>{if(event.key==="Tab")return;event.preventDefault();const value=shortcutFromKey(event);if(value!==null)setShortcut(value)}} placeholder="Kliknij i naciśnij kombinację"/><small className="field-hint">Na Macu możesz użyć ⌘ lub Option. Backspace wyłącza skrót.</small></label><label>Skrót otwierania Asystenta AI (T3ACH)<input value={aiShortcut} readOnly onKeyDown={event=>{if(event.key==="Tab")return;event.preventDefault();const value=shortcutFromKey(event);if(value!==null)setAiShortcut(value)}} placeholder="Kliknij i naciśnij kombinację"/><small className="field-hint">Backspace wyłącza skrót. Użyj innej kombinacji niż do zadania.</small></label>{error&&<p className="form-error">{error}</p>}<button className="primary wide" disabled={busy}>{busy?<span className="loader"/>:"Zapisz ustawienia"}</button></form></div>
+  function captureShortcut(event:React.KeyboardEvent<HTMLInputElement>,kind:"task"|"ai"){
+    if(event.key==="Tab")return;
+    event.preventDefault();
+    const value=shortcutFromKey(event);
+    if(value===null)return;
+    if(shortcutsConflict(value,kind==="task"?aiShortcut:shortcut)){setError("Ta kombinacja jest już przypisana do drugiego skrótu. Wybierz inną.");return}
+    setError("");
+    if(kind==="task")setShortcut(value);else setAiShortcut(value);
+  }
+  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();const amount=Number(minutes);if(!Number.isInteger(amount)||amount<10||amount>240){setError("Wpisz czas od 10 do 240 minut.");return}if(shortcutsConflict(shortcut,aiShortcut)){setError("Skróty zadania i Asystenta AI muszą być różne.");return}setBusy(true);setError("");try{await api.updateMe({timezone:String(new FormData(event.currentTarget).get("timezone")),preferred_minutes:amount,task_shortcut:shortcut,ai_shortcut:aiShortcut});done()}catch(err){setError(err instanceof Error?err.message:"Nie udało się zapisać ustawień.")}finally{setBusy(false)}}
+  return <div className="modal-backdrop" onMouseDown={close}><form className="modal profile-modal" onSubmit={submit} onMouseDown={event=>event.stopPropagation()}><button className="icon close" type="button" onClick={close}><X/></button><span className="kicker">USTAWIENIA UŻYTKOWNIKA</span><h2>Nauka i skróty</h2><TimezoneField value={user.timezone}/><label>Sugerowany czas nauki na dzień<input name="minutes" type="text" inputMode="numeric" pattern="[0-9]+" value={minutes} onChange={event=>setMinutes(event.target.value.replace(/\D/g,""))} placeholder="np. 45"/><small className="field-hint">To punkt wyjścia dla AI. Każdy dzień planu możesz później ustawić osobno.</small></label><label>Skrót dodawania zadania<input value={shortcut} readOnly onKeyDown={event=>captureShortcut(event,"task")} placeholder="Kliknij i naciśnij kombinację"/><small className="field-hint">Na Macu możesz użyć ⌘ lub Option. Backspace wyłącza skrót.</small></label><label>Skrót otwierania Asystenta AI (T3ACH)<input value={aiShortcut} readOnly onKeyDown={event=>captureShortcut(event,"ai")} placeholder="Kliknij i naciśnij kombinację"/><small className="field-hint">Backspace wyłącza skrót. Użyj innej kombinacji niż do zadania.</small></label>{error&&<p className="form-error">{error}</p>}<button className="primary wide" disabled={busy}>{busy?<span className="loader"/>:"Zapisz ustawienia"}</button></form></div>
 }
 
 function SessionEditForm({session,subjects,topics,tasks,close,done}:{session:Session;subjects:Subject[];topics:Topic[];tasks:Task[];close:()=>void;done:()=>void}) {
@@ -347,7 +356,7 @@ function App() {
     {t3achOpen&&<VoiceT3ach close={()=>setT3achOpen(false)} onSaved={load} openGenerator={()=>{setT3achOpen(false);setAiNotesOpen(true)}} memory={t3achMemory} remember={setT3achMemory}/>}
     {aiNotesOpen&&<AiAssistantV2 subjects={subjects} topics={topics} tasks={tasks} initialTopic={view==="topic-detail"?detailTopic:null} onSaved={load} onNeedSubject={()=>{setAiNotesOpen(false);setModal("subject")}} openT3ach={()=>{setAiNotesOpen(false);setT3achOpen(true)}} close={()=>setAiNotesOpen(false)}/>}
     {aiHistoryOpen&&<AiHistoryModalV2 topics={topics} close={()=>setAiHistoryOpen(false)}/>}
-    {user&&!user.onboarding_complete&&!loading&&tourStep===0&&localStorage.getItem(`studyflow_tour_done_${user.user_uid}`)==="1"&&<FirstRunWizard user={user} onDone={load}/>}
+    {user&&!user.onboarding_complete&&!loading&&tourStep===0&&localStorage.getItem(`studyflow_tour_done_${user.user_uid}`)==="1"&&<FirstRunWizard user={user} onDone={async message=>{await load();if(message)setToast({message,type:"success"})}}/>}
   </div>;
 }
 

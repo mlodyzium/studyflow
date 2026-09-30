@@ -65,11 +65,29 @@ def create_user(db: Session, data: UserCreate):
     return _save(db, models.User(**values), "Username or email already exists")
 
 
+def _normalize_shortcut(value: str) -> str:
+    if not value:
+        return ""
+    parts = value.split("+")
+    key = parts.pop()
+    modifiers = [part.lower() for part in parts]
+    allowed = ("ctrl", "alt", "meta", "shift")
+    if (len(key) != 1 or key.isspace() or len(modifiers) != len(set(modifiers))
+            or any(part not in allowed for part in modifiers)
+            or not any(part in modifiers for part in allowed[:3])):
+        raise HTTPException(status_code=422, detail="Nieprawidłowy skrót klawiszowy.")
+    return "+".join([*(part.title() for part in allowed if part in modifiers), key.upper()])
+
+
 def update_user(db: Session, user: models.User, data: UserUpdate):
-    task_shortcut = data.task_shortcut if data.task_shortcut is not None else user.task_shortcut
-    ai_shortcut = data.ai_shortcut if data.ai_shortcut is not None else user.ai_shortcut
+    task_shortcut = _normalize_shortcut(data.task_shortcut if data.task_shortcut is not None else user.task_shortcut)
+    ai_shortcut = _normalize_shortcut(data.ai_shortcut if data.ai_shortcut is not None else user.ai_shortcut)
     if task_shortcut and task_shortcut == ai_shortcut:
         raise HTTPException(status_code=422, detail="Skróty zadania i Asystenta AI muszą być różne.")
+    if data.task_shortcut is not None:
+        data.task_shortcut = task_shortcut
+    if data.ai_shortcut is not None:
+        data.ai_shortcut = ai_shortcut
     for field, value in data.model_dump(exclude_unset=True, exclude={"password", "confirm_password"}).items():
         setattr(user, field, value)
     if data.password is not None:

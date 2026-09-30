@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -8,6 +9,121 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import models
 from app.schemas.ai import GeneratedStudyPlan
+
+
+@dataclass(frozen=True)
+class PlanSchedule:
+    start_date: date
+    requested_days: int
+    days: int
+    total_minutes: int
+    dates: tuple[date, ...]
+    exam_date: date | None = None
+    exam_review: bool = False
+    adjustment: str | None = None
+
+
+def build_schedule(start_date: date, days: int, minutes_per_day: int, exam_date: date | None = None,
+                   excluded_weekdays: set[int] | None = None) -> PlanSchedule:
+    total = days * minutes_per_day
+    excluded = excluded_weekdays or set()
+    if any(day < 0 or day > 6 for day in excluded):
+        raise HTTPException(status_code=422, detail="Nieprawidłowy dzień tygodnia w ograniczeniach planu.")
+    if exam_date is not None and exam_date < start_date:
+        if (start_date - exam_date).days == 1:
+            raise HTTPException(status_code=422, detail="Do sprawdzianu nie pozostał już dzień nauki. Zmień termin lub zaplanuj krótką powtórkę ręcznie.")
+    horizon_end = min(start_date + timedelta(days=days - 1), exam_date) if exam_date and exam_date >= start_date else start_date + timedelta(days=days - 1)
+    calendar_days = (horizon_end - start_date).days + 1
+    available = tuple(start_date + timedelta(days=offset) for offset in range(calendar_days)
+                      if (start_date + timedelta(days=offset)).weekday() not in excluded)
+    if not available:
+        raise HTTPException(status_code=422, detail="W wybranym okresie nie ma żadnego dostępnego dnia nauki. Zmień dni wolne lub zakres planu.")
+    exam_review = exam_date in available and exam_date == horizon_end
+    study_days = len(available) - int(exam_review)
+    if total > study_days * 240 + (15 if exam_review else 0):
+        raise HTTPException(status_code=422, detail=f"Nie da się zmieścić {total} minut nauki w {study_days} dostępnych dniach. Zmień zakres, termin albo dni wolne.")
+    adjustment = None
+    if len(available) < days:
+        skipped = sorted({(start_date + timedelta(days=offset)).weekday() for offset in range(calendar_days)
+                          if (start_date + timedelta(days=offset)).weekday() in excluded})
+        weekday_names = ("poniedziałek", "wtorek", "środę", "czwartek", "piątek", "sobotę", "niedzielę")
+        excluded_note = f"Pomijam {', '.join(weekday_names[day] for day in skipped)}. " if skipped else ""
+        adjustment = (f"{excluded_note}Zachowuję łączny cel {total} minut i rozkładam materiał na {study_days} dni nauki"
+                      f"{' oraz krótką powtórkę w dniu sprawdzianu' if exam_review else ''}; dostępne dni będą odpowiednio dłuższe.")
+    return PlanSchedule(start_date, days, len(available), total, available, exam_date, exam_review, adjustment)
+
+
+def apply_schedule(result: GeneratedStudyPlan, schedule: PlanSchedule) -> GeneratedStudyPlan:
+    if len(result.steps) != schedule.days or {step.day for step in result.steps} != set(range(1, schedule.days + 1)):
+        raise HTTPException(status_code=502, detail=f"AI zwróciło {len(result.steps)} dni zamiast wymaganych {schedule.days}. Plan nie został zapisany. Spróbuj ponownie.")
+    result.steps.sort(key=lambda step: step.day)
+    review_minutes = min(15, schedule.total_minutes) if schedule.exam_review else 0
+    study_steps = result.steps[:-1] if schedule.exam_review else result.steps
+    remaining = schedule.total_minutes - review_minutes
+    weights = [max(1, step.duration_minutes) for step in study_steps]
+    durations = [max(5, min(240, round(remaining * weight / sum(weights)))) for weight in weights] if weights else []
+    difference = remaining - sum(durations)
+    cursor = 0
+    while difference:
+        change = 1 if difference > 0 else -1
+        eligible = [index for index, value in enumerate(durations) if 5 <= value + change <= 240]
+        if not eligible:
+            raise HTTPException(status_code=422, detail="Nie da się rozłożyć czasu nauki na dostępne dni.")
+        index = eligible[cursor % len(eligible)]
+        durations[index] += change
+        difference -= change
+        cursor += 1
+    for step, duration in zip(study_steps, durations):
+        step.duration_minutes = duration
+    for step, scheduled_date in zip(result.steps, schedule.dates):
+        step.scheduled_date = scheduled_date
+    if schedule.exam_review:
+        review = result.steps[-1]
+        review.title = "Krótka powtórka przed sprawdzianem"
+        review.objective = "Przypomnij najważniejsze pojęcia i zachowaj czas na odpoczynek przed sprawdzianem."
+        review.activities = ["Przejrzyj własne podsumowanie i najważniejsze wzory lub definicje.", "Sprawdź 2–3 pytania kontrolne; nie ucz się nowych zagadnień."]
+        review.duration_minutes = review_minutes
+    if schedule.adjustment:
+        result.overview = f"{schedule.adjustment} {result.overview}"[:1200]
+    result.start_date = schedule.dates[0]
+    return result
+
+
+def carry_over_excluded_activities(result: GeneratedStudyPlan, previous_preview: dict,
+                                   schedule: PlanSchedule, excluded_weekdays: set[int]) -> None:
+    if not excluded_weekdays:
+        return
+    previous_data = previous_preview.get("plan", previous_preview)
+    if not isinstance(previous_data, dict) or "steps" not in previous_data:
+        return
+    try:
+        previous = GeneratedStudyPlan.model_validate(previous_data)
+    except ValueError:
+        return
+    study_count = schedule.days - int(schedule.exam_review)
+    targets = {step.day: step for step in result.steps if step.day <= study_count}
+    if not targets:
+        return
+    known_activities = {activity.strip().casefold() for step in targets.values() for activity in step.activities}
+    for old_step in previous.steps:
+        old_date = old_step.scheduled_date or (previous.start_date + timedelta(days=old_step.day - 1) if previous.start_date else None)
+        if old_date is None or old_date.weekday() not in excluded_weekdays or old_date in schedule.dates:
+            continue
+        index = min(range(study_count), key=lambda item: abs((schedule.dates[item] - old_date).days))
+        target = targets.get(index + 1)
+        if target is None:
+            continue
+        if old_step.objective and old_step.objective.casefold() not in target.objective.casefold():
+            target.objective = f"{target.objective} Nadrobienie: {old_step.objective}"[:1000]
+        for activity in old_step.activities:
+            key = activity.strip().casefold()
+            if not key or key in known_activities:
+                continue
+            if len(target.activities) < 8:
+                target.activities.append(activity)
+            else:
+                target.activities[-1] = f"{target.activities[-1]}; {activity}"
+            known_activities.add(key)
 
 
 def study_instant(day: date, user: models.User, study_time: str | None = None) -> datetime:
@@ -30,7 +146,7 @@ def start_date_for(user: models.User, sent_at: datetime | None, minutes: int) ->
 
 def create_plan(db: Session, user: models.User, topic_uid: UUID, material_uid: UUID | None,
                 result: GeneratedStudyPlan, minutes_per_day: int) -> models.StudyPlan:
-    start = result.start_date or start_date_for(user, None, minutes_per_day)
+    start = result.start_date or min((step.scheduled_date for step in result.steps if step.scheduled_date), default=None) or start_date_for(user, None, minutes_per_day)
     plan = models.StudyPlan(user_uid=user.user_uid, topic_uid=topic_uid, material_uid=material_uid,
                             title=result.title, overview=result.overview,
                             success_criteria=result.success_criteria, start_date=start,
@@ -43,7 +159,7 @@ def create_plan(db: Session, user: models.User, topic_uid: UUID, material_uid: U
             raise HTTPException(status_code=422, detail="Plan zawiera powtórzony numer dnia.")
         used.add(step.day)
         db.add(models.StudyPlanDay(plan_uid=plan.plan_uid, day_number=step.day,
-                                   scheduled_date=start + timedelta(days=step.day - 1),
+                                   scheduled_date=step.scheduled_date or start + timedelta(days=step.day - 1),
                                    title=step.title, objective=step.objective,
                                    activities=step.activities, duration_minutes=step.duration_minutes))
     db.flush()

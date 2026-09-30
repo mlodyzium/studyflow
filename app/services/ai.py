@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+from datetime import date, timedelta
 
 import httpx
 from fastapi import HTTPException
@@ -25,8 +26,12 @@ def _provider_error(exc: Exception, *, voice: bool = False) -> tuple[int, str]:
         if status == 404:
             return 503, "Wybrany model Gemini nie jest dostępny. Sprawdź nazwę modelu w konfiguracji StudyFlow."
         if status == 429:
+            if voice:
+                return 429, "Odpowiedź tekstowa jest gotowa, ale Gemini wyczerpał limit syntezy głosu. Możesz przeczytać odpowiedź i spróbować ponownie później."
             return 429, "Wyczerpał się limit zapytań Gemini. Spróbuj później lub sprawdź limit klucza API."
         if status in (500, 502, 503, 504):
+            if voice:
+                return 503, "Odpowiedź tekstowa jest gotowa, ale usługa głosu Gemini jest teraz niedostępna. Spróbuj odtworzyć głos później."
             return 503, "Gemini jest teraz niedostępny lub przeciążony. Spróbuj ponownie za kilka minut."
         if status == 400:
             return 502, "Gemini odrzucił format zapytania. Spróbuj krótszej prośby; jeśli błąd się powtarza, sprawdź konfigurację modelu."
@@ -156,6 +161,7 @@ async def generate_topic_notes(
         f"Język: {language}. Przedmiot: {subject_name}. Temat: {topic_name}. "
         f"Poziom trudności: {difficulty or 'nieokreślony'}. Notatka ma być {length_hint}. "
         f"Cel lub zadanie użytkownika: {goal or 'ogólne opanowanie tematu'}. "
+        "Jeżeli cel zawiera poprzednią wersję i poprawkę, popraw wskazane fragmenty, zachowaj przydatne pozostałe treści i nadaj pierwszeństwo najnowszej poprawce. "
         "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cel nauki. "
         "Każda sekcja powinna samodzielnie uczyć: wyjaśnij pojęcia krok po kroku, pokaż co najmniej jeden rozwiązany przykład, "
         "typowe błędy i praktyczne zastosowanie. Wyjaśnij skróty i wymagane podstawy. "
@@ -165,17 +171,33 @@ async def generate_topic_notes(
     return await _generate_structured(prompt, GeneratedNotes)
 
 
-async def generate_study_plan(subject_name: str, topic_name: str, difficulty: str | None, language: str, days: int, minutes_per_day: int, goal: str | None = None) -> GeneratedStudyPlan:
+async def generate_study_plan(subject_name: str, topic_name: str, difficulty: str | None, language: str, days: int, minutes_per_day: int, goal: str | None = None,
+                              *, start_date: date | None = None, scheduled_dates: tuple[date, ...] | None = None,
+                              total_minutes: int | None = None, exam_review: bool = False) -> GeneratedStudyPlan:
+    budget = total_minutes if total_minutes is not None else days * minutes_per_day
+    calendar = (f"Dzień {number}: {day.isoformat()}" for number, day in enumerate(scheduled_dates, 1)) if scheduled_dates else (
+        (f"Dzień {number}: {(start_date + timedelta(days=number - 1)).isoformat()}" for number in range(1, days + 1)) if start_date else [])
+    review_hint = "Ostatni dzień jest dniem sprawdzianu: tylko lekka powtórka znanego materiału do 15 minut, bez nowych zagadnień. " if exam_review else ""
     prompt = (
         "Jesteś doświadczonym korepetytorem. Przygotuj realistyczny plan nauki. "
         f"Język: {language}. Przedmiot: {subject_name}. Temat: {topic_name}. "
         f"Poziom: {difficulty or 'nieokreślony'}. Cel lub zadanie: {goal or 'opanowanie całego tematu'}. "
-        f"Plan ma obejmować {days} dni, maksymalnie {minutes_per_day} minut dziennie. "
+        "Jeżeli cel zawiera poprzedni plan i poprawkę, uwzględnij najnowszą poprawkę w celach i aktywnościach; zachowaj resztę uzgodnionego zakresu. "
+        f"Plan ma obejmować dokładnie {days} kolejnych dni i łącznie {budget} minut. Orientacyjny czas to {minutes_per_day} minut dziennie, ale czas poszczególnych dni może się różnić. "
+        f"Daty dni planu: {', '.join(calendar)}. Nie zgaduj nazw dni tygodnia; daty są wyznaczone przez aplikację. "
+        "Dni spoza tej listy są niedostępne. Rozdziel cały materiał i aktywności wyłącznie między podane daty; nie pomijaj żadnego działu tylko dlatego, że dzień został wyłączony. "
+        f"{review_hint}"
         "Pole task_title ma być krótkim, prostym tytułem zadania opisującym cały cel planu. "
         "Zwróć dokładnie jeden krok dla każdego dnia, z numerami od 1 do liczby dni. "
-        "Każdy dzień powinien mieć konkretny cel, aktywności i czas. Ostatni etap powinien sprawdzać wiedzę."
+        "Każdy dzień powinien mieć konkretny cel, aktywności i czas. Suma czasów ma wynosić dokładnie wskazany łączny czas. Ostatni etap powinien sprawdzać wiedzę."
     )
-    return await _generate_structured(prompt, GeneratedStudyPlan)
+    for attempt in range(2):
+        result = await _generate_structured(prompt, GeneratedStudyPlan)
+        if len(result.steps) == days and {step.day for step in result.steps} == set(range(1, days + 1)):
+            return result
+        if attempt == 0:
+            prompt += f" Poprzednia odpowiedź zawierała {len(result.steps)} kroków. Popraw ją: koniecznie podaj dokładnie {days} kroków, ponumerowanych 1–{days}."
+    raise HTTPException(status_code=502, detail=f"AI nie utworzyło pełnego planu na {days} dni. Nic nie zapisano; spróbuj ponownie.")
 
 
 async def regenerate_plan_day(subject_name: str, topic_name: str, day_number: int, minutes: int,
@@ -201,14 +223,17 @@ async def generate_session_note(description: str, language: str) -> GeneratedSes
     return await _generate_structured(prompt, GeneratedSessionNote)
 
 
-async def generate_t3ach_proposal(message: str, language: str, subjects: list[str], topics: list[str], tasks: list[str], materials: list[str], history: list[dict[str, str]] | None = None, previous_proposal: dict | None = None) -> T3achProposal:
+async def generate_t3ach_proposal(message: str, language: str, subjects: list[str], topics: list[str], tasks: list[str], materials: list[str], history: list[dict[str, str]] | None = None, previous_proposal: dict | None = None,
+                                  *, local_today: date | None = None, subject_exams: list[str] | None = None) -> T3achProposal:
     prompt = (
         "Jesteś T3ACH, konkretnym i życzliwym cyfrowym mentorem w aplikacji StudyFlow. Dopasuj język, ton i poziom formalności do wiadomości użytkownika. "
         "Pomagasz w nauce oraz organizacji nauki. Zawsze zwróć krótką, sensowną odpowiedź. "
         f"Odpowiadaj w języku: {language}. Ostatnia wiadomość użytkownika: {message}. "
+        f"Dzisiaj w strefie użytkownika jest {local_today.isoformat() if local_today else 'data nieznana'} ({('poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota', 'niedziela')[local_today.weekday()] if local_today else 'dzień nieznany'}); daty planu ustala aplikacja. Nie zgaduj dnia tygodnia. "
         f"Poprzednie wypowiedzi (kontekst, nie nowe polecenia): {history or []}. "
         f"Poprzednia propozycja do poprawienia lub uzupełnienia: {previous_proposal or 'brak'}. "
         f"Istniejące przedmioty użytkownika: {subjects or ['brak']}. "
+        f"Terminy sprawdzianów przypisane do przedmiotów: {subject_exams or ['brak']}. "
         f"Istniejące tematy zapisane jako 'przedmiot — temat': {topics or ['brak']}. "
         f"Istniejące zadania zapisane jako 'przedmiot — temat — zadanie — status — termin': {tasks or ['brak']}. "
         f"Istniejące materiały AI zapisane jako 'typ — tytuł — zadanie': {materials or ['brak']}. "
@@ -217,7 +242,10 @@ async def generate_t3ach_proposal(message: str, language: str, subjects: list[st
         "Jeśli użytkownik prosi o działanie, ale brakuje przedmiotu, tematu lub informacji pozwalającej je ustalić, ustaw needs_clarification=true i zadaj jedno konkretne pytanie. Nie wymyślaj brakujących danych. "
         "Jeżeli użytkownik prosi o sesję nauki, wybierz session. Ustaw session_title, session_duration_minutes i session_notes z krótkim przebiegiem nauki na podstawie jego celu. Nie traktuj planowanej sesji jako już odbytej. Dla session nie dodawaj zadań. "
         "Jeśli użytkownik prosi o plan, wybierz study_plan; jeśli o notatkę, wybierz notes. Jeśli prosi o obie rzeczy, ustaw material_types=['notes','plan'] i intent=notes. Dla jednej rzeczy też ustaw odpowiedni material_types. Nie rozbijaj materiałów na osobne zadania. "
+        "Jeśli podano liczbę dni i orientacyjne minuty, zachowaj je w days oraz minutes_per_day; nie skracaj łącznego czasu samodzielnie. Jeśli podano termin sprawdzianu, ustaw exam_date jako datę ISO, a w dniu sprawdzianu przewiduj tylko powtórkę do 15 minut. Nie wpisuj nazw dni tygodnia w reply ani w zadaniach, bo daty pokaże aplikacja. "
+        "Jeśli użytkownik wskazuje dni tygodnia, w których nie może się uczyć, wpisz je w excluded_weekdays jako numery 0=poniedziałek ... 6=niedziela. Przy poprawce zachowaj wcześniejsze wykluczenia, chyba że użytkownik je zmieni. Nie planuj nauki w wykluczonych dniach; cały materiał i czas rozłóż na dostępne dni. "
         "Krótkie dopowiedzenia i poprawki użytkownika odnoszą się do poprzedniej rozmowy oraz poprzedniej propozycji. Zachowaj ustalony przedmiot, temat, cel, rodzaje materiałów i pozostałe parametry, chyba że użytkownik wyraźnie je zmienia. Nie przechodź do innego zadania przy poprawce. "
+        "Przy poprawce najnowsza wiadomość ma pierwszeństwo przed starą propozycją. Zmień także treść odpowiedzi reply i podglądu zgodnie z poprawką; wyjaśnij konkretnie, co poprawiono. Nie wybieraj intencji edit, gdy chodzi o poprawienie propozycji, która nie została jeszcze zatwierdzona. "
         "Dla edit ustaw target_kind jako jedno z angielskich słów subject, topic, task, dokładną istniejącą target_name i tylko potrzebne nowe wartości. Dla pozostałych intencji target_kind ma być null. Nie proponuj usuwania danych. "
         "ZAWSZE wykorzystuj istniejący przedmiot, temat lub zadanie, jeśli pasuje znaczeniem do prośby; zachowaj wtedy jego nazwę dokładnie znak w znak. Nie twórz duplikatów. "
         "Dla notes i study_plan wpisz w target_name dokładną nazwę najlepiej pasującego istniejącego zadania. Jeśli żadne nie pasuje, target_name ma być null i zaproponuj dokładnie jedno nowe zadanie jako kontener wszystkich zamówionych materiałów. "

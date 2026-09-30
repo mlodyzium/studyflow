@@ -38,7 +38,7 @@ def duplicate_plan(plan_uid: UUID, payload: PlanShift, db: Session = Depends(get
     db.flush()
     for day in source.days:
         db.add(models.StudyPlanDay(plan_uid=plan.plan_uid, day_number=day.day_number,
-                                   scheduled_date=payload.start_date + timedelta(days=day.day_number - 1),
+                                   scheduled_date=payload.start_date + (day.scheduled_date - source.start_date),
                                    scheduled_time=day.scheduled_time,
                                    title=day.title, objective=day.objective, activities=day.activities,
                                    duration_minutes=day.duration_minutes))

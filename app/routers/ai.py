@@ -1,6 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+import json
+import re
 import unicodedata
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -11,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
-from app.schemas.ai import AiConversationRead, AiMaterialRead, FallbackPlanRequest, GeneratedNotes, GeneratedSessionNote, GeneratedStudyPlan, ManualNoteRequest, NoteGenerationRequest, PlanGenerationRequest, SessionNoteGenerationRequest, T3achExecuteRequest, T3achExecuteResult, T3achPreviousProposal, T3achProposal, T3achRequest, T3achSpeechRequest, T3achTaskProposal
+from app.schemas.ai import AiConversationRead, AiMaterialRead, FallbackPlanRequest, GeneratedNotes, GeneratedSessionNote, GeneratedStudyPlan, ManualNoteRequest, MaterialApprovalRequest, NoteGenerationRequest, PlanGenerationRequest, SessionNoteGenerationRequest, T3achExecuteRequest, T3achExecuteResult, T3achPreviousProposal, T3achProposal, T3achRequest, T3achSpeechRequest, T3achTaskProposal
 from app.schemas.study import StudySessionCreate
 from app.services import ai as ai_service
 from app.services import study
@@ -21,6 +24,57 @@ from app.core.config import settings
 from app.core.traffic import check_limit
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+WEEKDAYS_PL = ("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
+
+
+def _explicit_plan_preferences(message: str) -> tuple[int | None, int | None]:
+    text = message.casefold()
+    day = re.search(r"(?:plan\s+na\s+|przez\s+)(\d{1,2})\s*(?:dni|dnia|dzień)\b|\b(\d{1,2})\s*(?:dni|dnia|dzień)\s*(?:nauki|po\b)", text)
+    minute = re.search(r"(?:po\s+)?(\d{1,3})\s*(?:minut|minuty|min|minute)\b(?:\s*(?:dziennie|każdego dnia))?", text)
+    days = int(day.group(1) or day.group(2)) if day else None
+    minutes = int(minute.group(1)) if minute else None
+    return (days if days and 1 <= days <= 30 else None,
+            minutes if minutes and 10 <= minutes <= 240 else None)
+
+
+def _revision_changes_schedule(message: str) -> tuple[bool, bool]:
+    text = message.casefold()
+    days = bool(re.search(r"\b(?:dni|dnia|dzień|tydzień|tygodnie|tygodni|etap(?:y|ów)?|krócej|dłużej|skróć|wydłuż)\b", text))
+    minutes = bool(re.search(r"\b(?:minut(?:y|ę|ami)?|min|godzin(?:y|ę)?|czasu|czas|krócej|dłużej|skróć|wydłuż)\b", text))
+    return days, minutes
+
+
+def _weekday_availability(message: str) -> tuple[set[int], set[int]]:
+    blocked: set[int] = set()
+    available: set[int] = set()
+    names = (r"poniedzial\w*", r"wtor\w*", r"srod\w*", r"czwart\w*",
+             r"piat\w*", r"sobot\w*", r"niedziel\w*")
+    plain = "".join(char for char in unicodedata.normalize("NFKD", message.casefold()) if not unicodedata.combining(char)).replace("ł", "l")
+    for clause in re.split(r"[,;.!?]|\b(?:ale|natomiast|za to)\b", plain):
+        weekdays = {index for index, pattern in enumerate(names) if re.search(rf"\b{pattern}\b", clause)}
+        if re.search(r"\bweekend\w*\b", clause):
+            weekdays.update({5, 6})
+        if not weekdays:
+            continue
+        if re.search(r"\b(?:nie\s+(?:moge|dam\s+rady|mam\s+czasu|ucze\s+sie|planuj)|bez|pomin|wyklucz|wolne\s+od\s+nauki)\b", clause):
+            blocked.update(weekdays)
+        elif re.search(r"\b(?:moge|dam\s+rade|mam\s+czas|dostepn\w*|pasuj\w*)\b", clause):
+            available.update(weekdays)
+    return blocked, available
+
+
+def _exam_date_from_message(message: str, today: date) -> date | None:
+    text = message.casefold()
+    exam = r"(?:sprawdzian|egzamin|kolokwium|kartkówk)"
+    relative = re.search(rf"{exam}.{{0,35}}?za\s+(\d{{1,2}})\s*(?:dni|dnia|dzień)\b|za\s+(\d{{1,2}})\s*(?:dni|dnia|dzień)\b.{{0,35}}?{exam}", text)
+    if relative:
+        return today + timedelta(days=int(relative.group(1) or relative.group(2)))
+    exam_weekdays = ("poniedziałek", "wtorek", "środę", "czwartek", "piątek", "sobotę", "niedzielę")
+    for index, weekday in enumerate(exam_weekdays):
+        if re.search(rf"{exam}.{{0,35}}?\b(?:w|we)\s+{weekday}\b", text):
+            days_ahead = (index - today.weekday()) % 7
+            return today + timedelta(days=days_ahead)
+    return None
 
 
 def _limit_generation(user: models.User = Depends(get_current_user)):
@@ -101,6 +155,7 @@ async def t3ach_speech(payload: T3achSpeechRequest, user: models.User = Depends(
 @router.post("/t3ach/propose", response_model=T3achProposal, dependencies=[Depends(_limit_generation)])
 async def propose_t3ach_actions(payload: T3achRequest, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     subjects = list(db.scalars(select(models.Subject).where(models.Subject.user_uid == user.user_uid).order_by(models.Subject.name)))
+    local_today = datetime.now(timezone.utc).astimezone(ZoneInfo(user.timezone)).date()
     topics = list(db.execute(select(models.Subject.name, models.Topic.name).join(models.Topic).where(models.Subject.user_uid == user.user_uid)))
     tasks = list(db.execute(select(models.Subject.name, models.Topic.name, models.Task.title, models.Task.is_done, models.Task.deadline).join(models.Topic, models.Topic.subject_uid == models.Subject.subject_uid).join(models.Task, models.Task.topic_uid == models.Topic.topic_uid).where(models.Subject.user_uid == user.user_uid)))
     materials = list(db.execute(select(models.AiMaterial.material_type, models.AiMaterial.title, models.Task.title).outerjoin(models.Task, models.Task.task_uid == models.AiMaterial.task_uid).where(models.AiMaterial.user_uid == user.user_uid).order_by(models.AiMaterial.created_at.desc()).limit(30)))
@@ -119,6 +174,8 @@ async def propose_t3ach_actions(payload: T3achRequest, db: Session = Depends(get
         original_request = previous_conversation.proposal.get("_original_request") or previous_conversation.user_message
         previous = T3achPreviousProposal(
             original_request=original_request,
+            previous_answer=previous_conversation.assistant_message,
+            previous_material=json.dumps(previous_proposal.preview, ensure_ascii=False)[:6000] if previous_proposal.preview else None,
             intent=previous_proposal.intent,
             subject_name=previous_proposal.subject_name,
             topic_name=previous_proposal.topic_name,
@@ -131,27 +188,76 @@ async def propose_t3ach_actions(payload: T3achRequest, db: Session = Depends(get
             material_types=previous_proposal.material_types,
             days=previous_proposal.days,
             minutes_per_day=previous_proposal.minutes_per_day,
+            excluded_weekdays=previous_proposal.excluded_weekdays,
+            exam_date=previous_proposal.exam_date,
+            requested_plan_days=previous_proposal.requested_plan_days,
+            plan_total_minutes=previous_proposal.plan_total_minutes,
             session_title=previous_proposal.session_title,
             session_duration_minutes=previous_proposal.session_duration_minutes,
             session_notes=previous_proposal.session_notes[:500] if previous_proposal.session_notes else None,
             tasks=[{"title": item.title, "priority": item.priority, "deadline_days": item.deadline_days, "notes": item.notes[:200] if item.notes else None} for item in previous_proposal.tasks],
         ).model_dump(exclude_none=True)
-    proposal = await ai_service.generate_t3ach_proposal(payload.message, payload.language, [item.name for item in subjects], [f"{subject} — {topic}" for subject, topic in topics], task_context, material_context, history, previous)
+    proposal = await ai_service.generate_t3ach_proposal(payload.message, payload.language, [item.name for item in subjects], [f"{subject} — {topic}" for subject, topic in topics], task_context, material_context, history, previous,
+                                                       local_today=local_today, subject_exams=[f"{item.name}: {item.exam_date.isoformat()}" for item in subjects if item.exam_date])
+    if previous:
+        if proposal.intent in {"edit", "study_help", "off_topic"} and previous["intent"] in {"organize", "study_plan", "notes", "session"}:
+            proposal.intent = previous["intent"]
+            proposal.needs_clarification = False
+            proposal.question = None
+        proposal.subject_name = proposal.subject_name or previous.get("subject_name")
+        proposal.topic_name = proposal.topic_name or previous.get("topic_name")
+        if previous["intent"] in {"notes", "study_plan"} and not re.search(r"\b(?:tylko|bez|zamiast)\b", payload.message.casefold()):
+            proposal.material_types = list(dict.fromkeys([*previous.get("material_types", []), *proposal.material_types]))
+            proposal.intent = "notes" if "notes" in proposal.material_types else "study_plan"
     proposal = _prepare_t3ach_proposal(proposal, subjects, topics, tasks)
+    explicit_days, explicit_minutes = _explicit_plan_preferences(payload.message)
+    changes_days, changes_minutes = _revision_changes_schedule(payload.message)
+    if explicit_days is not None: proposal.days = explicit_days
+    elif previous and not changes_days and previous.get("requested_plan_days"): proposal.days = previous["requested_plan_days"]
+    if explicit_minutes is not None: proposal.minutes_per_day = explicit_minutes
+    elif previous and not changes_minutes and previous.get("minutes_per_day"): proposal.minutes_per_day = previous["minutes_per_day"]
+    blocked, available = _weekday_availability(payload.message)
+    excluded_weekdays = set(proposal.excluded_weekdays) | set(previous.get("excluded_weekdays", []) if previous else [])
+    proposal.excluded_weekdays = sorted((excluded_weekdays | blocked) - available)
+    known_subject = next((item for item in subjects if proposal.subject_name and _name_key(item.name) == _name_key(proposal.subject_name)), None)
+    if proposal.intent in {"notes", "study_plan"} and "plan" in proposal.material_types:
+        proposal.exam_date = _exam_date_from_message(payload.message, local_today) or proposal.exam_date or (known_subject.exam_date if known_subject else None) or (previous.get("exam_date") if previous else None)
     proposal.plan_start_date = plan_service.start_date_for(user, payload.sent_at, proposal.minutes_per_day)
-    material_goal = f"Pierwotna prośba: {previous['original_request']}. Poprawka: {payload.message}" if previous else payload.message
+    material_goal = (f"Pierwotna prośba: {previous['original_request']}. "
+                     f"Poprzedni materiał do poprawienia: {previous.get('previous_material') or 'brak'}. "
+                     f"Najnowsza poprawka użytkownika ma pierwszeństwo: {payload.message}") if previous else payload.message
     if not proposal.needs_clarification and proposal.subject_name and proposal.topic_name:
+        schedule = None
+        if "plan" in proposal.material_types:
+            requested_days = proposal.days
+            schedule = plan_service.build_schedule(proposal.plan_start_date, requested_days, proposal.minutes_per_day, proposal.exam_date,
+                                                   set(proposal.excluded_weekdays))
+            proposal.days = schedule.days
+            proposal.requested_plan_days = requested_days
+            proposal.plan_total_minutes = schedule.total_minutes
+            if schedule.adjustment:
+                proposal.reply = f"{schedule.adjustment} {proposal.reply}"[:12000]
         if set(proposal.material_types) == {"notes", "plan"}:
             note = await ai_service.generate_topic_notes(proposal.subject_name, proposal.topic_name, proposal.difficulty, payload.language, "standard", material_goal)
-            plan = await ai_service.generate_study_plan(proposal.subject_name, proposal.topic_name, proposal.difficulty, payload.language, proposal.days, proposal.minutes_per_day, material_goal)
-            plan.start_date = proposal.plan_start_date
+            plan = await ai_service.generate_study_plan(proposal.subject_name, proposal.topic_name, proposal.difficulty, payload.language, proposal.days, proposal.minutes_per_day, material_goal,
+                                                        start_date=proposal.plan_start_date, scheduled_dates=schedule.dates,
+                                                        total_minutes=schedule.total_minutes, exam_review=schedule.exam_review)
+            if previous_conversation and previous_conversation.proposal.get("preview"):
+                plan_service.carry_over_excluded_activities(plan, previous_conversation.proposal["preview"], schedule,
+                                                            set(proposal.excluded_weekdays))
+            plan = plan_service.apply_schedule(plan, schedule)
             proposal.preview = {"notes": note.model_dump(mode="json"), "plan": plan.model_dump(mode="json")}
         elif proposal.intent == "study_plan":
             preview = await ai_service.generate_study_plan(
                 proposal.subject_name, proposal.topic_name, proposal.difficulty,
                 payload.language, proposal.days, proposal.minutes_per_day, material_goal,
+                start_date=proposal.plan_start_date, scheduled_dates=schedule.dates,
+                total_minutes=schedule.total_minutes, exam_review=schedule.exam_review,
             )
-            preview.start_date = proposal.plan_start_date
+            if previous_conversation and previous_conversation.proposal.get("preview"):
+                plan_service.carry_over_excluded_activities(preview, previous_conversation.proposal["preview"], schedule,
+                                                            set(proposal.excluded_weekdays))
+            preview = plan_service.apply_schedule(preview, schedule)
             proposal.preview = preview.model_dump(mode="json")
         elif proposal.intent == "notes":
             preview = await ai_service.generate_topic_notes(
@@ -159,6 +265,12 @@ async def propose_t3ach_actions(payload: T3achRequest, db: Session = Depends(get
                 payload.language, "standard", material_goal,
             )
             proposal.preview = preview.model_dump(mode="json")
+        if schedule:
+            weekday = WEEKDAYS_PL[schedule.dates[0].weekday()]
+            proposal.reply = (f"{proposal.reply.strip()} "
+                              f"Plan zaczyna się {schedule.dates[0].isoformat()} ({weekday}), obejmuje {schedule.days} dostępnych dni i łącznie {schedule.total_minutes} minut. "
+                              f"{schedule.adjustment or ''} Sprawdź podgląd i zatwierdź, jeśli Ci odpowiada.")[:12000].strip()
+            proposal.question = None
     last_user_message = payload.message.strip()[:3000]
     conversation = models.AiConversation(user_uid=user.user_uid, title=last_user_message[:157] or "Rozmowa z T3ACH", user_message=last_user_message, assistant_message=(proposal.question or proposal.reply)[:4000], proposal={})
     db.add(conversation)
@@ -205,7 +317,7 @@ async def execute_t3ach_actions(payload: T3achExecuteRequest, db: Session = Depe
         subject = next((item for item in db.scalars(select(models.Subject).where(models.Subject.user_uid == user.user_uid)) if _name_key(item.name) == _name_key(proposal.subject_name)), None)
         created_subject = subject is None
         if subject is None:
-            subject = models.Subject(name=normalize_name(proposal.subject_name), user_uid=user.user_uid)
+            subject = models.Subject(name=normalize_name(proposal.subject_name), user_uid=user.user_uid, exam_date=proposal.exam_date)
             db.add(subject)
             db.flush()
         topic = next((item for item in db.scalars(select(models.Topic).where(models.Topic.subject_uid == subject.subject_uid)) if _name_key(item.name) == _name_key(proposal.topic_name)), None) if proposal.topic_name else None
@@ -255,7 +367,7 @@ async def execute_t3ach_actions(payload: T3achExecuteRequest, db: Session = Depe
     subject = next((item for item in db.scalars(select(models.Subject).where(models.Subject.user_uid == user.user_uid)) if _name_key(item.name) == _name_key(subject_name)), None)
     created_subject = subject is None
     if subject is None:
-        subject = models.Subject(name=subject_name, user_uid=user.user_uid)
+        subject = models.Subject(name=subject_name, user_uid=user.user_uid, exam_date=proposal.exam_date)
         db.add(subject)
         db.flush()
     topic = next((item for item in db.scalars(select(models.Topic).where(models.Topic.subject_uid == subject.subject_uid)) if _name_key(item.name) == _name_key(topic_name)), None)
@@ -301,12 +413,16 @@ async def execute_t3ach_actions(payload: T3achExecuteRequest, db: Session = Depe
                 material = _save_material(db, user.user_uid, topic.topic_uid, tasks[0].task_uid if tasks else None, kind, result, commit=False)
                 plan_service.create_review(db, user, material)
             else:
+                start_date = proposal.plan_start_date or plan_service.start_date_for(user, None, proposal.minutes_per_day)
+                schedule = plan_service.build_schedule(start_date, proposal.requested_plan_days or proposal.days, proposal.minutes_per_day,
+                                                       proposal.exam_date, set(proposal.excluded_weekdays))
                 try:
-                    result = GeneratedStudyPlan.model_validate(preview) if preview else await ai_service.generate_study_plan(subject.name, topic.name, topic.difficulty, "polski", proposal.days, proposal.minutes_per_day, proposal.reply)
+                    result = GeneratedStudyPlan.model_validate(preview) if preview else await ai_service.generate_study_plan(subject.name, topic.name, topic.difficulty, "polski", schedule.days, proposal.minutes_per_day, proposal.reply,
+                                                                                                                          start_date=start_date, scheduled_dates=schedule.dates,
+                                                                                                                          total_minutes=schedule.total_minutes, exam_review=schedule.exam_review)
                 except ValidationError as exc:
                     raise HTTPException(status_code=422, detail="Zapisany plan jest nieprawidłowy.") from exc
-                start_date = proposal.plan_start_date or conversation.created_at.date()
-                result.start_date = start_date
+                result = plan_service.apply_schedule(result, schedule)
                 material = _save_material(db, user.user_uid, topic.topic_uid, tasks[0].task_uid if tasks else None, kind, result, commit=False)
                 plan = plan_service.create_plan(db, user, topic.topic_uid, material.material_uid, result, proposal.minutes_per_day)
                 result.plan_uid = plan.plan_uid
@@ -315,7 +431,7 @@ async def execute_t3ach_actions(payload: T3achExecuteRequest, db: Session = Depe
             titles.append(f"{'notatkę' if kind == 'notes' else 'plan'} „{result.title}”")
         db.commit()
         message = f"Utworzono {' i '.join(titles)} w {subject.name} → {topic.name}."
-        if "plan" in kinds: message += f" Dni planu są w kalendarzu od {start_date.isoformat()}."
+        if "plan" in kinds: message += f" Dni planu są w kalendarzu od {schedule.dates[0].isoformat()}."
     else:
         db.commit()
         message = f"W {subject.name} → {topic.name} zapisano {len(tasks)} zadań: {', '.join(task.title for task in tasks)}."
@@ -406,6 +522,8 @@ async def generate_notes(
         detail_level=payload.detail_level,
         goal=goal,
     )
+    if payload.preview_only:
+        return result
     task = _assign_task(db, topic_uid, selected_task, result)
     material = _save_material(db, user.user_uid, topic_uid, task.task_uid, "notes", result, commit=False)
     plan_service.create_review(db, user, material)
@@ -418,14 +536,57 @@ async def generate_plan(topic_uid: UUID, payload: PlanGenerationRequest, db: Ses
     topic = study.get_topic(db, topic_uid, user.user_uid)
     subject = study.get_subject(db, topic.subject_uid, user.user_uid)
     selected_task, goal = _task_and_goal(payload, topic_uid, db, user)
-    result = await ai_service.generate_study_plan(subject.name, topic.name, topic.difficulty, payload.language, payload.days, payload.minutes_per_day, goal)
-    result.start_date = plan_service.start_date_for(user, payload.sent_at, payload.minutes_per_day)
+    start_date = plan_service.start_date_for(user, payload.sent_at, payload.minutes_per_day)
+    blocked, available = _weekday_availability(goal or "")
+    schedule = plan_service.build_schedule(start_date, payload.days, payload.minutes_per_day, subject.exam_date, blocked - available)
+    result = await ai_service.generate_study_plan(subject.name, topic.name, topic.difficulty, payload.language, schedule.days, payload.minutes_per_day, goal,
+                                                  start_date=start_date, scheduled_dates=schedule.dates,
+                                                  total_minutes=schedule.total_minutes, exam_review=schedule.exam_review)
+    result = plan_service.apply_schedule(result, schedule)
+    if payload.preview_only:
+        return result
     material = _save_material(db, user.user_uid, topic_uid, selected_task.task_uid if selected_task else None, "plan", result, commit=False)
     plan = plan_service.create_plan(db, user, topic_uid, material.material_uid, result, payload.minutes_per_day)
     result.plan_uid = plan.plan_uid
     material.content = result.model_dump(mode="json")
     db.commit()
     return result
+
+
+@router.post("/topics/{topic_uid}/materials/accept")
+def accept_materials(topic_uid: UUID, payload: MaterialApprovalRequest,
+                     db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    topic = study.get_topic(db, topic_uid, user.user_uid)
+    subject = study.get_subject(db, topic.subject_uid, user.user_uid)
+    if payload.plan is not None:
+        plan = payload.plan
+        if plan.start_date is None or plan.plan_uid is not None:
+            raise HTTPException(status_code=422, detail="Plan do zatwierdzenia ma nieprawidłową datę lub był już zapisany.")
+        if {step.day for step in plan.steps} != set(range(1, len(plan.steps) + 1)):
+            raise HTTPException(status_code=422, detail="Dni planu muszą być kolejne i nie mogą się powtarzać.")
+        if subject.exam_date is not None:
+            exam_step = next((step for step in plan.steps if (step.scheduled_date or plan.start_date + timedelta(days=step.day - 1)) == subject.exam_date), None)
+            if exam_step is not None and exam_step.duration_minutes > 15:
+                raise HTTPException(status_code=422, detail="W dniu sprawdzianu plan może zawierać najwyżej 15 minut powtórki.")
+    note_uid = None
+    plan_uid = None
+    try:
+        if payload.notes is not None:
+            task = _assign_task(db, topic_uid, None, payload.notes)
+            material = _save_material(db, user.user_uid, topic_uid, task.task_uid, "notes", payload.notes, commit=False)
+            plan_service.create_review(db, user, material)
+            note_uid = material.material_uid
+        if payload.plan is not None:
+            material = _save_material(db, user.user_uid, topic_uid, None, "plan", payload.plan, commit=False)
+            saved_plan = plan_service.create_plan(db, user, topic_uid, material.material_uid, payload.plan, payload.minutes_per_day)
+            payload.plan.plan_uid = saved_plan.plan_uid
+            material.content = payload.plan.model_dump(mode="json")
+            plan_uid = saved_plan.plan_uid
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"note_uid": note_uid, "plan_uid": plan_uid}
 
 
 @router.post("/topics/{topic_uid}/manual-note", response_model=GeneratedNotes)
@@ -448,6 +609,10 @@ def create_manual_note(topic_uid: UUID, payload: ManualNoteRequest, db: Session 
 def create_fallback_plan(topic_uid: UUID, payload: FallbackPlanRequest,
                          db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     topic = study.get_topic(db, topic_uid, user.user_uid)
+    subject = study.get_subject(db, topic.subject_uid, user.user_uid)
+    start_date = plan_service.start_date_for(user, payload.sent_at, payload.minutes_per_day)
+    blocked, available = _weekday_availability(payload.goal)
+    schedule = plan_service.build_schedule(start_date, payload.days, payload.minutes_per_day, subject.exam_date, blocked - available)
     result = GeneratedStudyPlan(
         task_title=f"Nauka: {topic.name}", title=f"Plan nauki: {topic.name}",
         overview=f"Cel: {payload.goal}. Plan przygotowano bez AI; uzupełnij etapy o własne materiały i ćwiczenia.",
@@ -455,9 +620,9 @@ def create_fallback_plan(topic_uid: UUID, payload: FallbackPlanRequest,
                 "objective": "Przećwicz temat i zanotuj, co wymaga powtórki.",
                 "activities": ["Przeczytaj dostępne materiały.", "Rozwiąż własne przykłady lub zadania.",
                                "Zapisz pytania i trudności."], "duration_minutes": payload.minutes_per_day}
-               for number in range(1, payload.days + 1)],
+               for number in range(1, schedule.days + 1)],
         success_criteria=["Potrafię wyjaśnić temat własnymi słowami."])
-    result.start_date = plan_service.start_date_for(user, payload.sent_at, payload.minutes_per_day)
+    result = plan_service.apply_schedule(result, schedule)
     material = _save_material(db, user.user_uid, topic_uid, None, "plan", result, commit=False)
     plan = plan_service.create_plan(db, user, topic_uid, material.material_uid, result, payload.minutes_per_day)
     result.plan_uid = plan.plan_uid

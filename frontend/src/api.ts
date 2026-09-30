@@ -68,10 +68,12 @@ export const api = {
   addTopic: (data: { name: string; subject_uid: string; difficulty: string }) => request<Topic>("/topics", { method: "POST", body: JSON.stringify(data) }),
   updateTopic: (id: string, data: Partial<Pick<Topic, "name" | "subject_uid" | "difficulty" | "is_done">>) => request<Topic>(`/topics/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTopic: (id: string) => request<void>(`/topics/${id}`, { method: "DELETE" }),
-  generateNotes: (id: string, data: { detail_level: "short" | "standard" | "detailed"; task_uid?: string | null; custom_goal?: string | null }) =>
+  generateNotes: (id: string, data: { detail_level: "short" | "standard" | "detailed"; task_uid?: string | null; custom_goal?: string | null; preview_only?: boolean }) =>
     request<GeneratedNotes>(`/ai/topics/${id}/notes`, { method: "POST", body: JSON.stringify({ language: "polski", ...data }) }),
-  generatePlan: (id: string, data: { days: number; minutes_per_day: number; task_uid?: string | null; custom_goal?: string | null }) =>
+  generatePlan: (id: string, data: { days: number; minutes_per_day: number; task_uid?: string | null; custom_goal?: string | null; preview_only?: boolean }) =>
     request<GeneratedStudyPlan>(`/ai/topics/${id}/plan`, { method: "POST", body: JSON.stringify({ language: "polski", sent_at:new Date().toISOString(), ...data }) }),
+  acceptMaterials: (id:string,data:{notes:GeneratedNotes|null;plan:GeneratedStudyPlan|null;minutes_per_day:number})=>
+    request<{note_uid:string|null;plan_uid:string|null}>(`/ai/topics/${id}/materials/accept`,{method:"POST",body:JSON.stringify(data)}),
   manualNote:(id:string,title:string,content:string)=>request<GeneratedNotes>(`/ai/topics/${id}/manual-note`,{method:"POST",body:JSON.stringify({title,content})}),
   fallbackPlan:(id:string,goal:string,days:number,minutes_per_day:number)=>request<GeneratedStudyPlan>(`/ai/topics/${id}/fallback-plan`,{method:"POST",body:JSON.stringify({goal,days,minutes_per_day,sent_at:new Date().toISOString()})}),
   aiMaterials: (taskId?: string) => request<AiMaterial[]>(`/ai/materials${taskId ? `?task_uid=${taskId}` : ""}`),
