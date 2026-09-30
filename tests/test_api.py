@@ -1,6 +1,8 @@
 import os
-from datetime import timedelta
+import asyncio
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo
 import pytest
 import httpx
 from fastapi import HTTPException
@@ -17,6 +19,8 @@ from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan, T3achProposal
 from app.core.config import settings
 from app.services import auth as auth_service
 from app.services import ai as ai_service
+from app.services import plans as plan_service
+from app.routers.ai import _exam_date_from_message, _explicit_plan_preferences, _weekday_availability
 
 
 @pytest.fixture()
@@ -297,6 +301,61 @@ def test_generate_notes_for_owned_topic(client, monkeypatch):
     }
 
 
+def test_onboarding_materials_are_saved_only_after_review(client, monkeypatch):
+    headers, _ = auth_headers(client, "review-first-plan")
+    subject = create_subject(client, headers)
+    topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
+
+    async def fake_notes(**kwargs):
+        return GeneratedNotes(task_title="Nauka algebry", title="Notatka", summary="Podstawy",
+                              sections=[{"heading": "Definicja", "content": "Treść"}], key_points=["Punkt"])
+
+    async def fake_plan(*args, **kwargs):
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Powtórka",
+                                  steps=[{"day": day, "title": "Podstawy", "objective": "Zrozumieć",
+                                          "activities": ["Ćwiczenia"], "duration_minutes": 30}
+                                         for day in range(1, args[4] + 1)], success_criteria=["Umiem"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", fake_notes)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    note = client.post(f"/ai/topics/{topic['topic_uid']}/notes", headers=headers,
+                       json={"preview_only": True}).json()
+    plan = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers,
+                       json={"preview_only": True, "days": 2, "minutes_per_day": 30}).json()
+    assert plan["plan_uid"] is None
+    assert client.get("/ai/materials", headers=headers).json() == []
+    assert client.get("/plans", headers=headers).json() == []
+    assert client.get("/tasks", headers=headers).json()["items"] == []
+
+    note["sections"][0]["content"] = "Poprawiona treść"
+    plan["steps"][0]["duration_minutes"] = 45
+    saved = client.post(f"/ai/topics/{topic['topic_uid']}/materials/accept", headers=headers,
+                        json={"notes": note, "plan": plan, "minutes_per_day": 30})
+    assert saved.status_code == 200
+    assert saved.json()["note_uid"] and saved.json()["plan_uid"]
+    materials = client.get("/ai/materials", headers=headers).json()
+    assert next(item for item in materials if item["material_type"] == "notes")["content"]["sections"][0]["content"] == "Poprawiona treść"
+    assert client.get("/plans", headers=headers).json()[0]["days"][0]["duration_minutes"] == 45
+    assert len(client.get("/tasks", headers=headers).json()["items"]) == 1
+
+
+def test_onboarding_material_review_rejects_invalid_plan_without_saving_note(client):
+    headers, _ = auth_headers(client, "invalid-reviewed-plan")
+    subject = create_subject(client, headers)
+    topic = client.post("/topics", headers=headers, json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
+    note = {"task_title": "Nauka", "title": "Notatka", "summary": "Opis",
+            "sections": [{"heading": "A", "content": "Treść"}], "key_points": ["Punkt"]}
+    plan = {"task_title": "Nauka", "title": "Plan", "overview": "Opis", "start_date": "2026-10-01",
+            "steps": [{"day": 1, "title": "A", "objective": "Cel", "activities": ["Ćwicz"], "duration_minutes": 30},
+                      {"day": 1, "title": "B", "objective": "Cel", "activities": ["Ćwicz"], "duration_minutes": 30}],
+            "success_criteria": ["Umiem"]}
+    response = client.post(f"/ai/topics/{topic['topic_uid']}/materials/accept", headers=headers,
+                           json={"notes": note, "plan": plan, "minutes_per_day": 30})
+    assert response.status_code == 422
+    assert client.get("/ai/materials", headers=headers).json() == []
+    assert client.get("/tasks", headers=headers).json()["items"] == []
+
+
 def test_generate_study_plan_with_selected_task(client, monkeypatch):
     headers, _ = auth_headers(client)
     subject = create_subject(client, headers)
@@ -304,9 +363,9 @@ def test_generate_study_plan_with_selected_task(client, monkeypatch):
     task = client.post("/tasks", headers=headers, json={"title": "Przygotuj się do kartkówki", "topic_uid": topic["topic_uid"]}).json()
     captured = {}
 
-    async def fake_plan(*args):
+    async def fake_plan(*args, **kwargs):
         captured["args"] = args
-        return GeneratedStudyPlan(**{"task_title": "Powtórka algebry", "title": "Plan", "overview": "Plan powtórki.", "steps": [{"day": 1, "title": "Podstawy", "objective": "Zrozumienie", "activities": ["Przeczytaj notatki"], "duration_minutes": 30}], "success_criteria": ["Rozwiązuję przykłady"]})
+        return GeneratedStudyPlan(**{"task_title": "Powtórka algebry", "title": "Plan", "overview": "Plan powtórki.", "steps": [{"day": day, "title": "Podstawy", "objective": "Zrozumienie", "activities": ["Przeczytaj notatki"], "duration_minutes": 30} for day in range(1, args[4] + 1)], "success_criteria": ["Rozwiązuję przykłady"]})
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
     response = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers, json={"task_uid": task["task_uid"], "days": 5, "minutes_per_day": 30, "local_date": "2026-09-29", "local_hour": 19})
@@ -343,7 +402,7 @@ def test_ai_notes_cannot_access_another_users_topic(client, monkeypatch):
 def test_t3ach_proposes_then_executes_actions(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-user")
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(
             reply="Ułożę podstawy nauki algebry.",
             subject_name="Matematyka",
@@ -401,11 +460,11 @@ def test_t3ach_reuses_existing_structure_for_plan(client, monkeypatch):
     topic = client.post("/topics", headers=headers, json={"name": "Wielomiany", "subject_uid": subject["subject_uid"]}).json()
     task = client.post("/tasks", headers=headers, json={"title": "Powtórka wielomianów", "topic_uid": topic["topic_uid"], "priority": "MEDIUM"}).json()
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(reply="Ułożę plan.", intent="study_plan", subject_name=" matematyka ", topic_name="wielomiany", target_kind="zadanie", target_name="powtorka wielomianow", tasks=[])
 
-    async def fake_plan(*args):
-        return GeneratedStudyPlan(task_title="Powtórka wielomianów", title="Plan wielomianów", overview="Powtórka", steps=[{"day": 1, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45}], success_criteria=["Umiem rozwiązać zadania"])
+    async def fake_plan(*args, **kwargs):
+        return GeneratedStudyPlan(task_title="Powtórka wielomianów", title="Plan wielomianów", overview="Powtórka", steps=[{"day": day, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45} for day in range(1, args[4] + 1)], success_criteria=["Umiem rozwiązać zadania"])
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
     monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
@@ -427,14 +486,14 @@ def test_t3ach_reuses_existing_structure_for_plan(client, monkeypatch):
 def test_t3ach_creates_note_and_plan_from_one_request(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-both")
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(reply="Przygotuję notatkę i plan.", intent="notes", material_types=["notes", "plan"], subject_name="Matematyka", topic_name="Algebra", tasks=[{"title": "Nauka algebry"}])
 
     async def fake_notes(*args):
         return GeneratedNotes(task_title="Nauka algebry", title="Notatka z algebry", summary="Podstawy", sections=[{"heading": "Definicje", "content": "Treść"}], key_points=["Punkt"], review_questions=[])
 
-    async def fake_plan(*args):
-        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan algebry", overview="Powtórka", steps=[{"day": 1, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45}], success_criteria=["Umiem rozwiązać zadania"])
+    async def fake_plan(*args, **kwargs):
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan algebry", overview="Powtórka", steps=[{"day": day, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45} for day in range(1, args[4] + 1)], success_criteria=["Umiem rozwiązać zadania"])
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
     monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", fake_notes)
@@ -534,7 +593,7 @@ def test_notes_export_reviews_and_subject_archive_are_user_scoped(client):
 def test_t3ach_study_question_answers_without_acceptance_card(client, monkeypatch):
     headers, _ = auth_headers(client, "study-help")
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(intent="study_help", reply="SELECT pobiera wiersze z tabeli.",
                              subject_name="Informatyka", topic_name="SQL")
 
@@ -550,7 +609,7 @@ def test_t3ach_study_question_answers_without_acceptance_card(client, monkeypatc
 def test_t3ach_rejects_invalid_saved_preview_without_writing_data(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-bad-preview")
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(reply="Przygotuję notatkę.", intent="notes", subject_name="Matematyka", topic_name="Algebra", tasks=[{"title": "Nauka algebry"}])
 
     async def fake_notes(*args):
@@ -576,7 +635,7 @@ def test_t3ach_passes_previous_turn_to_model(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-context")
     captured = {}
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         captured["history"] = args[6]
         captured["previous"] = args[7]
         return T3achProposal(reply="Jaki temat?", needs_clarification=True, question="Jaki temat?", subject_name="Matematyka", topic_name="Algebra")
@@ -599,7 +658,7 @@ def test_t3ach_revision_uses_original_request_for_materials(client, monkeypatch)
     goals = []
     previous_context = []
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         previous_context.append(args[7])
         return T3achProposal(reply="Przygotuję poprawioną notatkę i plan.", intent="notes", material_types=["notes", "plan"], subject_name="Matematyka", topic_name="Algebra", days=5, tasks=[{"title": "Nauka algebry"}])
 
@@ -607,9 +666,9 @@ def test_t3ach_revision_uses_original_request_for_materials(client, monkeypatch)
         goals.append(args[-1])
         return GeneratedNotes(task_title="Nauka algebry", title="Notatka", summary="Podstawy", sections=[{"heading": "Definicje", "content": "Treść"}], key_points=["Punkt"], review_questions=[])
 
-    async def fake_plan(*args):
+    async def fake_plan(*args, **kwargs):
         goals.append(args[-1])
-        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Powtórka", steps=[{"day": 1, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45}], success_criteria=["Umiem"])
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Powtórka", steps=[{"day": day, "title": "Podstawy", "objective": "Zrozumieć", "activities": ["Ćwiczenia"], "duration_minutes": 45} for day in range(1, args[4] + 1)], success_criteria=["Umiem"])
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
     monkeypatch.setattr("app.routers.ai.ai_service.generate_topic_notes", fake_notes)
@@ -623,6 +682,116 @@ def test_t3ach_revision_uses_original_request_for_materials(client, monkeypatch)
     assert client.post("/ai/t3ach/execute", headers=headers, json={"proposal_uid": second.json()["proposal_uid"]}).status_code == 200
 
 
+def test_t3ach_prompt_revision_changes_answer_preview_and_saved_plan(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-revised-answer")
+    goals = []
+    previous_context = []
+
+    async def fake_proposal(*args, **kwargs):
+        previous_context.append(args[7])
+        if args[7]:
+            return T3achProposal(reply="Poprawiłem plan zgodnie z prośbą: pięć dni i zadania praktyczne.",
+                                 intent="study_plan", subject_name="Matematyka", topic_name="Algebra",
+                                 days=5, minutes_per_day=40)
+        return T3achProposal(reply="Wstępny plan na sześć dni.", intent="study_plan",
+                             subject_name="Matematyka", topic_name="Algebra", days=6, minutes_per_day=40)
+
+    async def fake_plan(*args, **kwargs):
+        goals.append(args[-1])
+        revised = "Najnowsza poprawka użytkownika" in args[-1]
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan algebry",
+                                  overview="Plan z zadaniami praktycznymi" if revised else "Plan wstępny",
+                                  steps=[{"day": day, "title": "Ćwiczenia praktyczne" if revised else "Teoria",
+                                          "objective": "Przećwicz przykłady", "activities": ["Rozwiąż zadania"],
+                                          "duration_minutes": 40} for day in range(1, args[4] + 1)],
+                                  success_criteria=["Umiem rozwiązać zadania"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    first = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan algebry na 6 dni po 40 minut"})
+    assert first.status_code == 200
+    revised = client.post("/ai/t3ach/propose", headers=headers,
+                          json={"message": "Poprawka: zrób plan na pięć dni i dodaj zadania praktyczne",
+                                "previous_proposal_uid": first.json()["proposal_uid"]})
+    assert revised.status_code == 200
+    proposal = revised.json()
+    assert proposal["days"] == 5
+    assert len(proposal["preview"]["steps"]) == 5
+    assert proposal["preview"]["steps"][0]["title"] == "Ćwiczenia praktyczne"
+    assert "Poprawiłem plan zgodnie z prośbą" in proposal["reply"]
+    assert "Plan wstępny" in previous_context[1]["previous_material"]
+    assert "pięć dni" in goals[-1]
+    assert client.post("/ai/t3ach/execute", headers=headers,
+                       json={"proposal_uid": first.json()["proposal_uid"]}).status_code == 409
+    saved = client.post("/ai/t3ach/execute", headers=headers, json={"proposal_uid": proposal["proposal_uid"]})
+    assert saved.status_code == 200
+    assert len(client.get("/plans", headers=headers).json()[0]["days"]) == 5
+
+
+def test_t3ach_revision_excludes_weekend_and_carries_activities_into_calendar(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-no-weekend")
+    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: date(2026, 9, 30))
+
+    async def fake_proposal(*args, **kwargs):
+        return T3achProposal(reply="Plan z zachowaniem pełnego materiału.", intent="study_plan",
+                             subject_name="Matematyka", topic_name="Algebra", days=6, minutes_per_day=30)
+
+    async def fake_plan(*args, **kwargs):
+        revised = "Najnowsza poprawka użytkownika" in args[-1]
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Ćwiczenia", steps=[
+            {"day": day, "title": f"Etap {day}", "objective": f"Cel {day}",
+             "activities": [f"{'Nowe' if revised else 'Stare'} ćwiczenie {day}"], "duration_minutes": 30}
+            for day in range(1, args[4] + 1)
+        ], success_criteria=["Umiem"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    first = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Plan algebry na 6 dni po 30 minut"})
+    assert first.status_code == 200
+    revised = client.post("/ai/t3ach/propose", headers=headers,
+                          json={"message": "Nie mogę w sobotę i niedzielę, przenieś te aktywności na inne dni",
+                                "previous_proposal_uid": first.json()["proposal_uid"]})
+    assert revised.status_code == 200
+    proposal = revised.json()
+    assert proposal["excluded_weekdays"] == [5, 6]
+    assert proposal["requested_plan_days"] == 6
+    steps = proposal["preview"]["steps"]
+    assert [step["scheduled_date"] for step in steps] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert sum(step["duration_minutes"] for step in steps) == 180
+    assert any("Stare ćwiczenie 4" in step["activities"] for step in steps)
+    assert any("Stare ćwiczenie 5" in step["activities"] for step in steps)
+    saved = client.post("/ai/t3ach/execute", headers=headers, json={"proposal_uid": proposal["proposal_uid"]})
+    assert saved.status_code == 200
+    plan = client.get("/plans", headers=headers).json()[0]
+    assert [day["scheduled_date"] for day in plan["days"]] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert sum(day["duration_minutes"] for day in plan["days"]) == 180
+    duplicate = client.post(f"/plans/{plan['plan_uid']}/duplicate", headers=headers, json={"start_date": "2026-10-07"})
+    assert duplicate.status_code == 200
+    assert [day["scheduled_date"] for day in duplicate.json()["days"]] == ["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-12"]
+
+
+def test_direct_plan_generator_respects_unavailable_weekdays_in_goal(client, monkeypatch):
+    headers, _ = auth_headers(client, "direct-no-weekend")
+    subject = create_subject(client, headers)
+    topic = client.post("/topics", headers=headers,
+                        json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
+    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: date(2026, 9, 30))
+
+    async def fake_plan(*args, **kwargs):
+        assert kwargs["scheduled_dates"] == (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5))
+        return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Ćwiczenia", steps=[
+            {"day": day, "title": f"Etap {day}", "objective": "Ćwicz", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
+            for day in range(1, args[4] + 1)
+        ], success_criteria=["Umiem"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    response = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers,
+                           json={"days": 6, "minutes_per_day": 30, "custom_goal": "nie moge sobota i niedziela"})
+    assert response.status_code == 200
+    assert [step["scheduled_date"] for step in response.json()["steps"]] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert [step["duration_minutes"] for step in response.json()["steps"]] == [45, 45, 45, 45]
+
+
 def test_t3ach_rejects_oversized_conversation_turn(client):
     headers, _ = auth_headers(client, "t3ach-limit")
     response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan algebry", "history": [{"role": "user", "text": "x" * 501}]})
@@ -632,7 +801,7 @@ def test_t3ach_rejects_oversized_conversation_turn(client):
 def test_t3ach_off_topic_returns_reply_without_actions(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-unrelated")
 
-    async def fake_proposal(*args):
+    async def fake_proposal(*args, **kwargs):
         return T3achProposal(reply="Pogoda będzie słoneczna.", intent="off_topic", subject_name="Pogoda", tasks=[{"title": "Sprawdź prognozę"}])
 
     monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
@@ -672,10 +841,120 @@ def test_gemini_incomplete_response_explains_truncation():
     assert "ucięta" in ai_service._invalid_result_detail(response)
 
 
+def test_gemini_voice_failure_does_not_blame_generated_answer():
+    response = httpx.Response(503, request=httpx.Request("POST", "https://example.invalid"))
+    exception = httpx.HTTPStatusError("Gemini voice error", request=response.request, response=response)
+    status, detail = ai_service._provider_error(exception, voice=True)
+    assert status == 503
+    assert "Odpowiedź tekstowa jest gotowa" in detail
+    assert "głosu" in detail
+
+
+def test_plan_preserves_total_time_and_limits_exam_day_to_review():
+    schedule = plan_service.build_schedule(date(2026, 9, 30), 6, 30, date(2026, 10, 2))
+    assert schedule.days == 3
+    assert schedule.total_minutes == 180
+    result = GeneratedStudyPlan(task_title="Nauka", title="Plan", overview="Ćwiczenia", steps=[
+        {"day": day, "title": "Temat", "objective": "Ćwiczenia", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
+        for day in range(1, 4)
+    ], success_criteria=["Umiem"])
+    plan_service.apply_schedule(result, schedule)
+    assert sum(step.duration_minutes for step in result.steps) == 180
+    assert [step.duration_minutes for step in result.steps] == [83, 82, 15]
+    assert "powtórka" in result.steps[-1].title.casefold()
+    assert "nowych zagadnień" in result.steps[-1].activities[-1]
+
+
+def test_plan_rejects_ai_response_with_missing_days():
+    schedule = plan_service.build_schedule(date(2026, 9, 30), 6, 30)
+    result = GeneratedStudyPlan(task_title="Nauka", title="Plan", overview="Ćwiczenia", steps=[
+        {"day": day, "title": "Temat", "objective": "Ćwiczenia", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
+        for day in range(1, 4)
+    ], success_criteria=["Umiem"])
+    with pytest.raises(HTTPException, match="zamiast wymaganych 6"):
+        plan_service.apply_schedule(result, schedule)
+
+
+def test_plan_skips_weekend_and_moves_full_time_to_available_days():
+    schedule = plan_service.build_schedule(date(2026, 9, 30), 6, 30, excluded_weekdays={5, 6})
+    assert schedule.dates == (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5))
+    result = GeneratedStudyPlan(task_title="Nauka", title="Plan", overview="Ćwiczenia", steps=[
+        {"day": day, "title": f"Etap {day}", "objective": "Ćwiczenia", "activities": ["Zadania"], "duration_minutes": 30}
+        for day in range(1, 5)
+    ], success_criteria=["Umiem"])
+    plan_service.apply_schedule(result, schedule)
+    assert [step.scheduled_date for step in result.steps] == list(schedule.dates)
+    assert [step.duration_minutes for step in result.steps] == [45, 45, 45, 45]
+    assert sum(step.duration_minutes for step in result.steps) == 180
+    assert _weekday_availability("Nie mogę w sobotę i niedzielę") == ({5, 6}, set())
+    assert _weekday_availability("nie moge sobota i niedziela") == ({5, 6}, set())
+    assert _weekday_availability("W sobotę i niedzielę nie mogę, ale w poniedziałek mogę") == ({5, 6}, {0})
+    before_weekend_exam = plan_service.build_schedule(date(2026, 9, 30), 6, 30, date(2026, 10, 4), {5, 6})
+    assert before_weekend_exam.dates == (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2))
+    assert before_weekend_exam.exam_review is False
+    assert before_weekend_exam.total_minutes == 180
+
+
+def test_plan_reads_explicit_budget_and_relative_exam_from_user_message():
+    message = "Ułóż plan na 6 dni po 30 minut, sprawdzian za 2 dni"
+    assert _explicit_plan_preferences(message) == (6, 30)
+    assert _exam_date_from_message(message, date(2026, 9, 30)) == date(2026, 10, 2)
+
+
+def test_plan_generation_retries_when_ai_omits_days(monkeypatch):
+    calls = []
+
+    async def fake_structured(prompt, schema):
+        calls.append(prompt)
+        days = 3 if len(calls) == 1 else 6
+        return GeneratedStudyPlan(task_title="Nauka", title="Plan", overview="Ćwiczenia", steps=[
+            {"day": day, "title": "Temat", "objective": "Ćwiczenia", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
+            for day in range(1, days + 1)
+        ], success_criteria=["Umiem"])
+
+    monkeypatch.setattr(ai_service, "_generate_structured", fake_structured)
+    result = asyncio.run(ai_service.generate_study_plan("Matematyka", "Algebra", None, "polski", 6, 30, start_date=date(2026, 9, 30)))
+    assert len(calls) == 2
+    assert len(result.steps) == 6
+
+
+def test_t3ach_keeps_requested_minutes_when_exam_shortens_plan(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-exam-budget")
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Warsaw")).date()
+    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: today)
+
+    async def fake_proposal(*args, **kwargs):
+        return T3achProposal(reply="Przygotuję plan.", intent="study_plan", subject_name="Matematyka", topic_name="Algebra", days=3, minutes_per_day=30)
+
+    async def fake_plan(*args, **kwargs):
+        return GeneratedStudyPlan(task_title="Nauka", title="Plan", overview="Ćwiczenia", steps=[
+            {"day": day, "title": "Temat", "objective": "Ćwiczenia", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
+            for day in range(1, args[4] + 1)
+        ], success_criteria=["Umiem"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Plan na 6 dni po 30 minut, sprawdzian za 2 dni"})
+    assert response.status_code == 200
+    proposal = response.json()
+    assert proposal["days"] == 3
+    assert proposal["requested_plan_days"] == 6
+    assert proposal["plan_total_minutes"] == 180
+    assert proposal["plan_start_date"] == today.isoformat()
+    assert sum(step["duration_minutes"] for step in proposal["preview"]["steps"]) == 180
+    assert proposal["preview"]["steps"][-1]["duration_minutes"] == 15
+
+
 def test_user_can_set_distinct_shortcuts_for_task_and_ai(client):
     headers, _ = auth_headers(client, "two-shortcuts")
     updated = client.patch("/users/me", headers=headers, json={"task_shortcut": "Meta+Shift+J", "ai_shortcut": "Meta+Shift+A"})
     assert updated.status_code == 200
     assert updated.json()["ai_shortcut"] == "Meta+Shift+A"
     assert client.patch("/users/me", headers=headers, json={"ai_shortcut": "Meta+Shift+J"}).status_code == 422
-    assert client.get("/users/me", headers=headers).json()["ai_shortcut"] == "Meta+Shift+A"
+    assert client.patch("/users/me", headers=headers, json={"ai_shortcut": "shift+meta+j"}).status_code == 422
+    canonical = client.patch("/users/me", headers=headers, json={"ai_shortcut": "shift+ctrl+a"})
+    assert canonical.status_code == 200
+    assert canonical.json()["ai_shortcut"] == "Ctrl+Shift+A"
+    assert client.patch("/users/me", headers=headers, json={"task_shortcut": "shift+ctrl+a"}).status_code == 422
+    assert client.patch("/users/me", headers=headers, json={"ai_shortcut": "Ctrl++"}).status_code == 422
+    assert client.get("/users/me", headers=headers).json()["ai_shortcut"] == "Ctrl+Shift+A"

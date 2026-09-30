@@ -40,6 +40,8 @@ Zapytanie do Gemini jest wysyłane dopiero po kliknięciu przycisku generowania.
 
 Notatki można pobrać jako Markdown albo otworzyć widok wydruku i zapisać jako PDF. Każda nowa notatka trafia też do kolejki powtórek. Plan ma osobne dni z postępem; można je kończyć, przesuwać, duplikować i poprawiać pojedynczo. Dni planu są widoczne w kalendarzu, a osobne zadania kalendarzowe tworzy się na życzenie.
 
+Przy planie liczba minut dziennie jest orientacyjna: aplikacja zachowuje łączny czas nauki i może inaczej rozłożyć go pomiędzy dni. Jeśli sprawdzian wypada wcześniej niż koniec wybranego planu, wcześniejsze dni stają się dłuższe, a w dniu sprawdzianu pozostaje tylko powtórka do 15 minut. Gdy czasu nie da się realnie zmieścić przed sprawdzianem, aplikacja wyjaśnia konflikt zamiast zapisać skrócony plan.
+
 Materiały są również wiązane z zadaniami:
 
 - wygenerowana notatka pojawia się w czytelnej sekcji **Materiały AI** w szczegółach zadania,
@@ -68,6 +70,8 @@ T3ACH jest konwersacyjną warstwą nad StudyFlow. Użytkownik opisuje naturalnym
 - zapisuje dane dopiero po kliknięciu **Zatwierdź i zapisz w StudyFlow**.
 
 Generowanie propozycji i jej wykonanie są rozdzielone na dwa endpointy. Backend zapisuje propozycję i zatwierdza ją po identyfikatorze; sprawdza właściciela oraz blokuje ponowne wykonanie. Dotychczasowe generatory notatek i planów pozostają dostępne bezpośrednio z panelu T3ACH.
+
+T3ACH najpierw przygotowuje odpowiedź tekstową, a potem czyta ją głosem AI. Jeśli usługa głosu jest niedostępna, pokazuje osobny komunikat i przełącza odczyt na polski głos dostępny w przeglądarce lub na urządzeniu. Odpowiedź tekstowa pozostaje widoczna.
 
 ### AI w sesjach nauki
 
