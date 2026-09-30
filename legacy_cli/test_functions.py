@@ -1,4 +1,4 @@
-"""Testy aktualnej warstwy SQLAlchemy."""
+"""Tests for the archived SQLAlchemy CLI layer."""
 import os
 from datetime import date
 
@@ -40,14 +40,14 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 @pytest.fixture
 def database_session():
     if not TEST_DATABASE_URL or not TEST_DATABASE_URL.startswith("postgresql"):
-        pytest.skip("Ustaw TEST_DATABASE_URL na testową bazę PostgreSQL")
+        pytest.skip("Set TEST_DATABASE_URL to a test PostgreSQL database")
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from data.database import Base
     from data.models import User, Subject
     engine = create_engine(TEST_DATABASE_URL)
     Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
     try:
         user = User(username="pytest_user", password_hash="hash")
         session.add(user); session.flush()

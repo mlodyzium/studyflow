@@ -1,3 +1,4 @@
+from app.core.i18n import tr
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,7 +24,7 @@ def _owned_note(db: Session, material_uid: UUID, user_uid: UUID):
     material = db.scalar(select(models.AiMaterial).where(models.AiMaterial.material_uid == material_uid,
                                                        models.AiMaterial.user_uid == user_uid,
                                                        models.AiMaterial.material_type == "notes"))
-    if material is None: raise HTTPException(status_code=404, detail="Nie znaleziono notatki.")
+    if material is None: raise HTTPException(status_code=404, detail=tr('Note not found.'))
     return material
 
 

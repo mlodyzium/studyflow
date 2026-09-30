@@ -37,7 +37,7 @@ class Settings:
     database_url: str = os.getenv(
         "DATABASE_URL",
         "postgresql+psycopg://{user}:{password}@{host}:{port}/{name}".format(
-            user=os.getenv("DB_USER", "postgres"), password=os.getenv("DB_PASSWORD", "postgre"),
+            user=os.getenv("DB_USER", "postgres"), password=os.getenv("DB_PASSWORD", "postgres"),
             host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
             name=os.getenv("DB_NAME", "studyflow"),
         ),

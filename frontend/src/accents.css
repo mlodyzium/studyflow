@@ -674,9 +674,11 @@ textarea:focus {
   max-height:88vh;
 }
 .t3ach-generator-link{font-size:0;margin-top:10px;padding:7px 10px;border-radius:10px;transition:background .2s ease}
-.t3ach-generator-link::after{content:"Wróć do Asystenta AI";font-size:11px}
+.t3ach-generator-link::after{content:"Back to AI Assistant";font-size:11px}
 .t3ach-generator-link:hover{background:var(--accent-soft)}
-.t3ach-proposal::before{content:"PODGLĄD ZMIAN";display:block;margin-bottom:10px;color:var(--accent-ink);font-size:9px;font-weight:900;letter-spacing:1px}
+.t3ach-proposal::before{content:"CHANGE PREVIEW";display:block;margin-bottom:10px;color:var(--accent-ink);font-size:9px;font-weight:900;letter-spacing:1px}
+html[lang="pl"] .t3ach-generator-link::after{content:"Wróć do Asystenta AI"}
+html[lang="pl"] .t3ach-proposal::before{content:"PODGLĄD ZMIAN"}
 @media(max-width:650px){.ai-assistant.ai-assistant-v2,.ai-assistant.ai-hub,.t3ach-shell{height:100vh;max-height:100vh}}
 
 /* Complete semantic palette for AI surfaces (the legacy theme only exposed --panel/--ink). */
@@ -864,6 +866,11 @@ textarea:focus {
   animation:settingsCenterIn .26s cubic-bezier(.2,.8,.2,1) both;
 }
 .sidebar .profile-settings-menu>button{min-height:43px;font-size:12px}
+.profile-settings-menu .profile-language{min-height:43px;display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:10px;background:#222823;color:#d6dbd7;font-size:12px;font-weight:750}
+.profile-language svg{width:16px;height:16px;flex:none;color:var(--accent)}
+.profile-language select{width:112px;min-height:30px;margin-left:auto;padding:4px 7px;border:1px solid #465049;border-radius:8px;background:#1a1f1b;color:#fff;font:inherit;cursor:pointer}
+.profile-language select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.profile-language select:disabled{opacity:.6;cursor:wait}
 .sidebar .profile-settings-menu .settings-accent{margin-top:6px;padding-top:11px}
 @keyframes settingsCenterIn{
   from{opacity:0;transform:translate(-50%,calc(-50% + 12px)) scale(.97)}
@@ -975,3 +982,5 @@ textarea:focus {
 .t3ach-material-types{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
 .t3ach-material-types span{padding:5px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:11px;font-weight:750}
 .voice-state small{max-height:none;overflow:visible;overflow-wrap:anywhere}
+
+.ai-history-bulk{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 22px 16px}.ai-history-bulk label{display:flex;align-items:center;gap:8px}.ai-history-bulk span{color:var(--muted);font-size:13px}.ai-history-bulk button{display:flex;align-items:center;gap:6px}.ai-history-bulk svg{width:16px;height:16px}.ai-history-row{grid-template-columns:24px minmax(0,1fr) auto}.ai-history-row>input,.ai-history-bulk input{width:17px;height:17px;accent-color:var(--accent);cursor:pointer}.ai-history-row>button:nth-child(2){width:100%}

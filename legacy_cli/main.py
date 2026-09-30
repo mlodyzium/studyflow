@@ -3,7 +3,7 @@ import sys
 if "--test" in sys.argv or "test_functions" in sys.argv:
     import pytest
     result = pytest.main(["-q", "legacy_cli/test_functions.py"])
-    # Brak lokalnych zależności/bazy oznacza same skipy, nie błąd aplikacji.
+    # Missing local dependencies or a test database means skipped tests, not an app error.
     raise SystemExit(0 if result == 5 else result)
 
 from legacy_cli.functions import (
@@ -15,58 +15,40 @@ from legacy_cli.functions import (
     TopicService,
 )
 
-MAIN_MENU = """
-========================================
-         📚 STUDYFLOW - MENU 📚
-========================================
- [przedmioty] - Zarządzaj przedmiotami
- [tematy]     - Zarządzaj tematami
- [zadania]    - Zarządzaj zadaniami
- [sesje]      - Sesje nauki
- [egzaminy]   - Wyniki egzaminów
- [wyloguj]    - Wyloguj się
-========================================
-"""
+MAIN_MENU = '\n========================================\n         📚 STUDYFLOW - MENU 📚\n========================================\n [subjects]   - Manage subjects\n [topics]     - Manage topics\n [tasks]      - Manage tasks\n [sessions]   - Study sessions\n [exams]      - Exam results\n [logout]     - Log out\n========================================\n'
 
-CRUD_MENU_TEMPLATE = """
---- {nazwa} ---
- [dodaj]  - Dodaj
- [edytuj] - Edytuj
- [usun]   - Usuń
- [pokaz]  - Pokaż
- [wroc]   - Wróć do menu głównego
-"""
+CRUD_MENU_TEMPLATE = '\n--- {nazwa} ---\n [add]    - Add\n [edit]   - Edit\n [delete] - Delete\n [show]   - Show\n [back]   - Back to main menu\n'
 
 
 def crud_menu(nazwa, service, extra_actions=None):
-    """Wspólne podmenu CRUD dla serwisów, które mają add/edit/delete/show."""
+    """Shared CRUD menu for services with add, edit, delete, and show actions."""
     extra_actions = extra_actions or {}
     while True:
         print(CRUD_MENU_TEMPLATE.format(nazwa=nazwa))
         for label, (opis, _) in extra_actions.items():
             print(f" [{label}] - {opis}")
-        wybor = input("Wybierz opcję > ").lower().strip()
+        wybor = input('Select option > ').lower().strip()
 
-        if wybor == "dodaj":
+        if wybor == 'add':
             service.add()
-        elif wybor == "edytuj":
+        elif wybor == 'edit':
             service.edit()
-        elif wybor == "usun":
+        elif wybor == 'delete':
             service.delete()
-        elif wybor == "pokaz":
+        elif wybor == 'show':
             service.show()
         elif wybor in extra_actions:
             extra_actions[wybor][1]()
-        elif wybor == "wroc":
+        elif wybor == 'back':
             break
         else:
-            print("Niepoprawna komenda!")
+            print('Invalid command!')
 
 
 def auth_menu():
     auth = Auth()
     while True:
-        wybor = input("\n[1] Zaloguj się   [2] Zarejestruj się   [3] Wyjdź\nWybierz > ").strip()
+        wybor = input('\n[1] Log in   [2] Register   [3] Exit\nSelect > ').strip()
 
         if wybor == "1":
             user_uid = auth.login()
@@ -79,15 +61,15 @@ def auth_menu():
         elif wybor == "3":
             return None
         else:
-            print("Niepoprawna komenda!")
+            print('Invalid command!')
 
 
 def main():
-    print("📚 Witaj w StudyFlow!")
+    print('📚 Welcome to StudyFlow!')
     user_uid = auth_menu()
 
     if not user_uid:
-        print("Do zobaczenia!")
+        print('Goodbye!')
         return
 
     subjects = SubjectService(user_uid)
@@ -98,25 +80,25 @@ def main():
 
     while True:
         print(MAIN_MENU)
-        wybor = input("Wybierz opcję > ").lower().strip()
+        wybor = input('Select option > ').lower().strip()
 
-        if wybor == "przedmioty":
-            crud_menu("Przedmioty", subjects)
-        elif wybor == "tematy":
-            crud_menu("Tematy", topics)
-        elif wybor == "zadania":
-            crud_menu("Zadania", tasks, extra_actions={
-                "wykonano": ("Oznacz zadanie jako zrobione", tasks.complete)
+        if wybor == 'subjects':
+            crud_menu('Subjects', subjects)
+        elif wybor == 'topics':
+            crud_menu('Topics', topics)
+        elif wybor == 'tasks':
+            crud_menu('Tasks', tasks, extra_actions={
+                'completed': ('Mark task as done', tasks.complete)
             })
-        elif wybor == "sesje":
-            crud_menu("Sesje nauki", study_sessions)
-        elif wybor == "egzaminy":
-            crud_menu("Wyniki egzaminów", exam_results)
-        elif wybor == "wyloguj":
-            print("\nMiłej nauki! Do zobaczenia!")
+        elif wybor == 'sessions':
+            crud_menu('Study sessions', study_sessions)
+        elif wybor == 'exams':
+            crud_menu('Exam results', exam_results)
+        elif wybor == 'logout':
+            print('\nHappy studying! See you!')
             break
         else:
-            print("Niepoprawna komenda!")
+            print('Invalid command!')
 
 
 if __name__ == "__main__":

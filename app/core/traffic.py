@@ -1,3 +1,4 @@
+from app.core.i18n import tr
 from collections import defaultdict, deque
 from threading import Lock
 from time import monotonic
@@ -18,7 +19,7 @@ def check_limit(bucket: str, identity: str, limit: int, window_seconds: int) -> 
         if len(events) >= limit:
             _counters[f"rate_limited_{bucket}"] += 1
             wait = max(1, int(events[0] + window_seconds - now))
-            raise HTTPException(status_code=429, detail="Za dużo prób. Spróbuj później.", headers={"Retry-After": str(wait)})
+            raise HTTPException(status_code=429, detail=tr('Too many attempts. Try again later.'), headers={"Retry-After": str(wait)})
         events.append(now)
         _counters[f"requests_{bucket}"] += 1
 

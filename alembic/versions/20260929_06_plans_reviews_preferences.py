@@ -118,7 +118,7 @@ def upgrade() -> None:
               (day_uid,plan_uid,day_number,scheduled_date,title,objective,activities,duration_minutes,is_done)
               VALUES (:id,:plan,:number,:day,:title,:objective,:activities,:minutes,false)"""),
               {"id": uuid4(), "plan": plan_uid, "number": number,
-               "day": start + timedelta(days=number - 1), "title": step.get("title", f"Dzień {number}"),
+               "day": start + timedelta(days=number - 1), "title": step.get("title", f"Day {number}"),
                "objective": step.get("objective", ""),
                "activities": sa.JSON().bind_processor(connection.dialect)(step.get("activities", [])),
                "minutes": int(step.get("duration_minutes", 45))})

@@ -1,3 +1,4 @@
+from app.core.i18n import tr
 from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -6,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class NoteGenerationRequest(BaseModel):
-    language: str = Field(default="polski", min_length=2, max_length=30)
+    language: str = Field(default="English", min_length=2, max_length=30)
     detail_level: str = Field(default="standard", pattern="^(short|standard|detailed)$")
     task_uid: UUID | None = None
     custom_goal: str | None = Field(default=None, max_length=500)
@@ -28,7 +29,7 @@ class GeneratedNotes(BaseModel):
 
 
 class PlanGenerationRequest(BaseModel):
-    language: str = Field(default="polski", min_length=2, max_length=30)
+    language: str = Field(default="English", min_length=2, max_length=30)
     task_uid: UUID | None = None
     custom_goal: str | None = Field(default=None, max_length=500)
     days: int = Field(default=7, ge=1, le=30)
@@ -66,7 +67,7 @@ class MaterialApprovalRequest(BaseModel):
     @model_validator(mode="after")
     def require_material(self):
         if self.notes is None and self.plan is None:
-            raise ValueError("Wybierz notatkę lub plan do zapisania.")
+            raise ValueError(tr('Select a note or plan to save.'))
         return self
 
 
@@ -84,7 +85,7 @@ class FallbackPlanRequest(BaseModel):
 
 class SessionNoteGenerationRequest(BaseModel):
     description: str = Field(min_length=3, max_length=1000)
-    language: str = Field(default="polski", min_length=2, max_length=30)
+    language: str = Field(default="English", min_length=2, max_length=30)
 
 
 class GeneratedSessionNote(BaseModel):
@@ -113,9 +114,14 @@ class AiConversationRead(BaseModel):
     created_at: datetime
 
 
+class AiHistoryBulkDelete(BaseModel):
+    kind: Literal["materials", "chats"]
+    ids: list[UUID] = Field(min_length=1, max_length=1000)
+
+
 class T3achHistoryTurn(BaseModel):
     role: Literal["user", "assistant"]
-    text: str = Field(min_length=1, max_length=500)
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class T3achPreviousTask(BaseModel):
@@ -126,9 +132,12 @@ class T3achPreviousTask(BaseModel):
 
 
 class T3achPreviousProposal(BaseModel):
+    session_date: date | None = None
+    session_completed: bool = False
     original_request: str | None = Field(default=None, max_length=3000)
     previous_answer: str | None = Field(default=None, max_length=4000)
-    previous_material: str | None = Field(default=None, max_length=6000)
+    previous_material: str | None = None
+    plan_start_date: date | None = None
     intent: str = Field(max_length=30)
     subject_name: str | None = Field(default=None, max_length=100)
     topic_name: str | None = Field(default=None, max_length=100)
@@ -152,9 +161,9 @@ class T3achPreviousProposal(BaseModel):
 
 
 class T3achRequest(BaseModel):
-    message: str = Field(min_length=3, max_length=3000)
-    language: str = Field(default="polski", min_length=2, max_length=30)
-    history: list[T3achHistoryTurn] = Field(default_factory=list, max_length=10)
+    message: str = Field(min_length=1, max_length=3000)
+    language: str = Field(default="English", min_length=2, max_length=30)
+    history: list[T3achHistoryTurn] = Field(default_factory=list, max_length=30)
     previous_proposal_uid: UUID | None = None
     local_date: date | None = None
     local_hour: int | None = Field(default=None, ge=0, le=23)
@@ -168,6 +177,26 @@ class T3achExecuteRequest(BaseModel):
 
 class T3achSpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1500)
+
+
+class MaterialDraftRequest(BaseModel):
+    subject_uid: UUID
+    topic_name: str = Field(min_length=1, max_length=100)
+    mode: Literal["notes", "plan"]
+    detail_level: Literal["short", "standard", "detailed"] = "standard"
+    custom_goal: str | None = Field(default=None, max_length=500)
+    task_uid: UUID | None = None
+    days: int = Field(default=7, ge=1, le=30)
+    minutes_per_day: int = Field(default=45, ge=10, le=240)
+    sent_at: datetime | None = None
+    fallback: bool = False
+    manual_content: str | None = Field(default=None, min_length=10, max_length=12000)
+
+    @field_validator("topic_name")
+    @classmethod
+    def strip_topic(cls, value):
+        if not value.strip(): raise ValueError(tr('Enter the topic name.'))
+        return value.strip()
 
 
 class T3achTaskProposal(BaseModel):
@@ -185,6 +214,9 @@ class T3achTaskProposal(BaseModel):
 
 
 class T3achProposal(BaseModel):
+    revision_changes_content: bool = False
+    session_date: date | None = None
+    session_completed: bool = False
     proposal_uid: UUID | None = None
     reply: str = Field(min_length=1, max_length=12000)
     needs_clarification: bool = False
@@ -237,7 +269,7 @@ class T3achProposal(BaseModel):
     @classmethod
     def validate_excluded_weekdays(cls, value):
         if any(day < 0 or day > 6 for day in value):
-            raise ValueError("Dni tygodnia muszą mieć wartości od 0 do 6.")
+            raise ValueError(tr('Days of the week must have values from 0 to 6.'))
         return sorted(set(value))
 
     @model_validator(mode="after")
@@ -258,7 +290,7 @@ class T3achProposal(BaseModel):
             self.intent = "off_topic"
         if self.intent == "off_topic":
             self.needs_clarification = True
-            self.reply = "Pomagam w nauce i organizowaniu nauki. Powiedz proszę, czego chcesz się nauczyć albo co mam zaplanować."
+            self.reply = tr('I help with studying and organizing your studies. Please tell me what you want to learn or what I should plan.')
             self.question = self.reply
             self.subject_name = self.topic_name = None
             self.tasks = []

@@ -14,65 +14,65 @@ DIFFICULTY_OPTIONS = ["EASY", "MEDIUM", "HARD"]
 PRIORITY_OPTIONS = [p.value for p in Priority]
 
 
-# ---------- Pomocnicze funkcje do pobierania danych od użytkownika ----------
+# ---------- Helpers for user input ----------
 
 def ask_date(prompt, allow_empty=True):
-    """Prosi o datę w formacie YYYY-MM-DD. Zwraca date albo None (jeśli puste i dozwolone)."""
+    """Ask for a YYYY-MM-DD date, or return None when an empty value is allowed."""
     while True:
-        info = " (YYYY-MM-DD, enter aby pominąć)" if allow_empty else " (YYYY-MM-DD)"
+        info = ' (YYYY-MM-DD, press enter to skip)' if allow_empty else " (YYYY-MM-DD)"
         raw = input(f"{prompt}{info}: ").strip()
         if not raw and allow_empty:
             return None
         try:
             return datetime.strptime(raw, "%Y-%m-%d").date()  # noqa: DTZ007
         except ValueError:
-            print("Zły format daty! Użyj YYYY-MM-DD.")
+            print('Invalid date format! Use YYYY-MM-DD.')
 
 
 def ask_int(prompt, allow_empty=True, min_value=None):
     while True:
-        info = " (enter aby pominąć)" if allow_empty else ""
+        info = ' (press enter to skip)' if allow_empty else ""
         raw = input(f"{prompt}{info}: ").strip()
         if not raw and allow_empty:
             return None
         try:
             value = int(raw)
             if min_value is not None and value < min_value:
-                print(f"Wartość musi być >= {min_value}!")
+                print('Value must be >= {0}!'.format(min_value))
                 continue
             return value
         except ValueError:
-            print("Podaj liczbę całkowitą!")
+            print('Enter an integer!')
 
 
 def ask_float(prompt, allow_empty=True, min_value=None, max_value=None):
     while True:
-        info = " (enter aby pominąć)" if allow_empty else ""
+        info = ' (press enter to skip)' if allow_empty else ""
         raw = input(f"{prompt}{info}: ").strip()
         if not raw and allow_empty:
             return None
         try:
             value = float(raw)
             if min_value is not None and value < min_value:
-                print(f"Wartość musi być >= {min_value}!")
+                print('Value must be >= {0}!'.format(min_value))
                 continue
             if max_value is not None and value > max_value:
-                print(f"Wartość musi być <= {max_value}!")
+                print('Value must be <= {0}!'.format(max_value))
                 continue
             return value
         except ValueError:
-            print("Podaj liczbę!")
+            print('Enter a number!')
 
 
 def ask_choice(prompt, options, allow_empty=True):
     while True:
-        info = f" ({'/'.join(options)}, enter aby pominąć)" if allow_empty else f" ({'/'.join(options)})"
+        info = ' ({0}, press enter to skip)'.format('/'.join(options)) if allow_empty else f" ({'/'.join(options)})"
         raw = input(f"{prompt}{info}: ").strip().upper()
         if not raw and allow_empty:
             return None
         if raw in options:
             return raw
-        print("Niepoprawna opcja!")
+        print('Invalid option!')
 
 
 # ---------- Logowanie / rejestracja ----------
@@ -82,25 +82,25 @@ class Auth:
         session = SessionLocal()
 
         while True:
-            username = input("Wybierz nazwę użytkownika: ").strip().lower()
+            username = input('Choose a username: ').strip().lower()
             if not username:
-                print("Nazwa użytkownika nie może być pusta!")
+                print('Username cannot be empty!')
                 continue
 
             existing = session.query(User).filter(User.username == username).first()
             if existing:
-                print("Taki użytkownik już istnieje!")
+                print('This user already exists!')
                 continue
             break
 
         while True:
-            password = getpass.getpass("Wybierz hasło: ")
+            password = getpass.getpass('Choose a password: ')
             if len(password) < 4:
-                print("Hasło musi mieć co najmniej 4 znaki!")
+                print('Password must be at least 4 characters long!')
                 continue
 
-            if getpass.getpass("Powtórz hasło: ") != password:
-                print("Hasła się nie zgadzają!")
+            if getpass.getpass('Repeat password: ') != password:
+                print('Passwords do not match!')
                 continue
             break
 
@@ -108,7 +108,7 @@ class Auth:
         session.add(new_user)
         session.commit()
         session.refresh(new_user)
-        print(f"Zarejestrowano pomyślnie! Witaj, {username}.")
+        print('Registered successfully! Welcome, {0}.'.format(username))
 
         user_uid = new_user.user_uid
         session.close()
@@ -118,19 +118,19 @@ class Auth:
         session = SessionLocal()
 
         while True:
-            username = input("Nazwa użytkownika: ").strip().lower()
-            password = getpass.getpass("Hasło: ")
+            username = input('Username: ').strip().lower()
+            password = getpass.getpass('Password: ')
 
             user = session.query(User).filter(User.username == username).first()
 
             if not user or not verify_password(password, user.password_hash):
-                print("Błędna nazwa użytkownika lub hasło!")
-                if input("Spróbować ponownie? (t/n): ").strip().lower() != "t":
+                print('Invalid username or password!')
+                if input('Try again? (y/n): ').strip().lower() != 'y':
                     session.close()
                     return None
                 continue
 
-            print(f"Zalogowano pomyślnie! Witaj, {username}.")
+            print('Logged in successfully! Welcome, {0}.'.format(username))
             user_uid = user.user_uid
             session.close()
             return user_uid
@@ -150,23 +150,23 @@ class SubjectService:
             .all()
         )
 
-    def _select(self, session, prompt="Podaj nazwę przedmiotu"):
+    def _select(self, session, prompt='Enter subject name'):
         subjects = self._get_all(session)
         if not subjects:
-            print("Brak przedmiotów!")
+            print('No subjects!')
             return None
 
         for s in subjects:
-            data = f" (egzamin: {s.exam_date})" if s.exam_date else ""
+            data = ' (exam: {0})'.format(s.exam_date) if s.exam_date else ""
             print(f"- {s.nazwa}{data}")
 
         while True:
-            nazwa = input(f"\n{prompt} (albo 'anuluj'): ").strip().lower()
-            if nazwa == "anuluj":
+            nazwa = input("\n{0} (or 'cancel'): ".format(prompt)).strip().lower()
+            if nazwa == 'cancel':
                 return None
             subject = next((s for s in subjects if s.nazwa == nazwa), None)
             if not subject:
-                print("Nie znaleziono przedmiotu o takiej nazwie!")
+                print('No subject found with that name!')
                 continue
             return subject
 
@@ -174,77 +174,77 @@ class SubjectService:
         session = SessionLocal()
 
         while True:
-            nazwa = input("Podaj nazwę przedmiotu: ").strip().lower()
+            nazwa = input('Enter subject name: ').strip().lower()
             if not nazwa:
-                print("Nazwa nie może być pusta!")
+                print('Name cannot be empty!')
                 session.close()
                 return
 
             if session.query(SubjectModel).filter(
                 SubjectModel.user_uid == self.user_uid, SubjectModel.nazwa == nazwa
             ).first():
-                print("Dany przedmiot już istnieje!")
+                print('This subject already exists!')
                 continue
             break
 
-        exam_date = ask_date("Data egzaminu")
+        exam_date = ask_date('Exam date')
 
         new_subject = SubjectModel(nazwa=nazwa, user_uid=self.user_uid, exam_date=exam_date)
         session.add(new_subject)
         session.commit()
-        print("Dodano przedmiot!")
+        print('Subject added!')
         session.close()
 
     def edit(self):
         session = SessionLocal()
-        subject = self._select(session, "Który przedmiot edytujesz?")
+        subject = self._select(session, 'Which subject do you want to edit?')
         if not subject:
             session.close()
             return
 
-        nowa_nazwa = input(f"Nowa nazwa (enter aby zostawić '{subject.nazwa}'): ").strip().lower()
+        nowa_nazwa = input("New name (press enter to keep '{0}'): ".format(subject.nazwa)).strip().lower()
         if nowa_nazwa:
             exists = session.query(SubjectModel).filter(
                 SubjectModel.user_uid == self.user_uid, SubjectModel.nazwa == nowa_nazwa
             ).first()
             if exists:
-                print("Przedmiot o takiej nazwie już istnieje! Anulowano.")
+                print('A subject with that name already exists! Cancelled.')
                 session.close()
                 return
             subject.nazwa = nowa_nazwa
 
-        nowa_data = ask_date("Nowa data egzaminu")
+        nowa_data = ask_date('New exam date')
         if nowa_data:
             subject.exam_date = nowa_data
 
         session.commit()
-        print("Zaktualizowano przedmiot!")
+        print('Subject updated!')
         session.close()
 
     def delete(self):
         session = SessionLocal()
-        subject = self._select(session, "Który przedmiot usunąć?")
+        subject = self._select(session, 'Which subject do you want to delete?')
         if not subject:
             session.close()
             return
 
-        if input(f"Na pewno usunąć '{subject.nazwa}' wraz ze wszystkim co zawiera? (tak/nie): ").strip().lower() != "tak":
-            print("Anulowano.")
+        if input("Are you sure you want to delete '{0}' and everything it contains? (yes/no): ".format(subject.nazwa)).strip().lower() != 'yes':
+            print('Cancelled.')
             session.close()
             return
 
         session.delete(subject)
         session.commit()
-        print("Usunięto przedmiot.")
+        print('Subject removed.')
         session.close()
 
     def show(self):
         session = SessionLocal()
         subjects = self._get_all(session)
         if not subjects:
-            print("Brak przedmiotów!")
+            print('No subjects!')
         for s in subjects:
-            data = f" (egzamin: {s.exam_date})" if s.exam_date else ""
+            data = ' (exam: {0})'.format(s.exam_date) if s.exam_date else ""
             print(f"- {s.nazwa}{data}")
         session.close()
 
@@ -264,120 +264,120 @@ class TopicService:
             .all()
         )
 
-    def _select(self, session, subject, prompt="Podaj nazwę tematu"):
+    def _select(self, session, subject, prompt='Enter the topic name'):
         topics = self._get_all(session, subject)
         if not topics:
-            print("Brak tematów w tym przedmiocie!")
+            print('No topics in this subject!')
             return None
 
         for t in topics:
-            status = "opanowany" if t.status else "w trakcie"
-            trudnosc = f", trudność: {t.difficulty}" if t.difficulty else ""
+            status = 'mastered' if t.status else 'in progress'
+            trudnosc = ', difficulty: {0}'.format(t.difficulty) if t.difficulty else ""
             print(f"- {t.nazwa} ({status}{trudnosc})")
 
         while True:
-            nazwa = input(f"\n{prompt} (albo 'anuluj'): ").strip().lower()
-            if nazwa == "anuluj":
+            nazwa = input("\n{0} (or 'cancel'): ".format(prompt)).strip().lower()
+            if nazwa == 'cancel':
                 return None
             topic = next((t for t in topics if t.nazwa == nazwa), None)
             if not topic:
-                print("Nie znaleziono tematu o takiej nazwie!")
+                print('No topic found with that name!')
                 continue
             return topic
 
     def add(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Do którego przedmiotu dodać temat?")
+        subject = self.subjects._select(session, 'To which subject do you want to add the topic?')
         if not subject:
             session.close()
             return
 
         while True:
-            nazwa = input("Podaj nazwę tematu: ").strip().lower()
+            nazwa = input('Enter the topic name: ').strip().lower()
             if not nazwa:
-                print("Nazwa nie może być pusta!")
+                print('Name cannot be empty!')
                 session.close()
                 return
             if session.query(TopicModel).filter(
                 TopicModel.subject_uid == subject.subject_uid, TopicModel.nazwa == nazwa
             ).first():
-                print("Taki temat już istnieje w tym przedmiocie!")
+                print('This topic already exists in this subject!')
                 continue
             break
 
-        difficulty = ask_choice("Poziom trudności", DIFFICULTY_OPTIONS)
+        difficulty = ask_choice('Difficulty level', DIFFICULTY_OPTIONS)
 
         new_topic = TopicModel(nazwa=nazwa, subject_uid=subject.subject_uid, difficulty=difficulty)
         session.add(new_topic)
         session.commit()
-        print("Dodano temat!")
+        print('Topic added!')
         session.close()
 
     def edit(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie edytujesz temat?")
+        subject = self.subjects._select(session, 'In which subject are you editing the topic?')
         if not subject:
             session.close()
             return
 
-        topic = self._select(session, subject, "Który temat edytujesz?")
+        topic = self._select(session, subject, 'Which topic are you editing?')
         if not topic:
             session.close()
             return
 
-        nowa_nazwa = input(f"Nowa nazwa (enter aby zostawić '{topic.nazwa}'): ").strip().lower()
+        nowa_nazwa = input("New name (press enter to keep '{0}'): ".format(topic.nazwa)).strip().lower()
         if nowa_nazwa:
             topic.nazwa = nowa_nazwa
 
-        nowa_trudnosc = ask_choice("Nowy poziom trudności", DIFFICULTY_OPTIONS)
+        nowa_trudnosc = ask_choice('New difficulty level', DIFFICULTY_OPTIONS)
         if nowa_trudnosc:
             topic.difficulty = nowa_trudnosc
 
-        zmiana_statusu = input("Oznaczyć jako opanowany? (tak/nie/enter aby pominąć): ").strip().lower()
-        if zmiana_statusu == "tak":
+        zmiana_statusu = input('Mark as mastered? (yes/no/enter to skip): ').strip().lower()
+        if zmiana_statusu == 'yes':
             topic.status = True
-        elif zmiana_statusu == "nie":
+        elif zmiana_statusu == 'no':
             topic.status = False
 
         session.commit()
-        print("Zaktualizowano temat!")
+        print('Topic updated!')
         session.close()
 
     def delete(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie usunąć temat?")
+        subject = self.subjects._select(session, 'In which subject do you want to delete the topic?')
         if not subject:
             session.close()
             return
 
-        topic = self._select(session, subject, "Który temat usunąć?")
+        topic = self._select(session, subject, 'Which topic to delete?')
         if not topic:
             session.close()
             return
 
-        if input(f"Na pewno usunąć temat '{topic.nazwa}' wraz z zadaniami? (tak/nie): ").strip().lower() != "tak":
-            print("Anulowano.")
+        if input("Are you sure you want to delete the topic '{0}' along with its tasks? (yes/no): ".format(topic.nazwa)).strip().lower() != 'yes':
+            print('Cancelled.')
             session.close()
             return
 
         session.delete(topic)
         session.commit()
-        print("Usunięto temat.")
+        print('Topic removed.')
         session.close()
 
     def show(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Tematy którego przedmiotu pokazać?")
+        subject = self.subjects._select(session, "Whose subject's topics should be shown?")
         if not subject:
             session.close()
             return
 
         topics = self._get_all(session, subject)
         if not topics:
-            print("Brak tematów.")
+            print('No topics.')
         for t in topics:
-            status = "opanowany" if t.status else "w trakcie"
-            trudnosc = f", trudność: {t.difficulty}" if t.difficulty else ""
+            status = 'mastered' if t.status else 'in progress'
+            trudnosc = ', difficulty: {0}'.format(t.difficulty) if t.difficulty else ""
             print(f"- {t.nazwa} ({status}{trudnosc})")
         session.close()
 
@@ -404,50 +404,50 @@ class TaskService:
             for task in self._get_all(session, topic)
         )
 
-    def _select_task(self, session, topic, prompt="Podaj treść zadania"):
+    def _select_task(self, session, topic, prompt='Enter the task content'):
         tasks = self._get_all(session, topic)
         if not tasks:
-            print("Brak zadań w tym temacie!")
+            print('No tasks in this topic!')
             return None
 
         for t in tasks:
-            status = "Wykonane" if t.is_done else " "
-            deadline = f", termin: {t.deadline.date()}" if t.deadline else ""
-            print(f"  [{status}] {t.title} (priorytet: {t.priority.value}{deadline})")
+            status = 'Completed' if t.is_done else " "
+            deadline = ', due date: {0}'.format(t.deadline.date()) if t.deadline else ""
+            print('  [{0}] {1} (priority: {2}{3})'.format(status, t.title, t.priority.value, deadline))
 
         while True:
-            tresc = input(f"\n{prompt} (albo 'anuluj'): ").strip()
-            if tresc.lower() == "anuluj":
+            tresc = input("\n{0} (or 'cancel'): ".format(prompt)).strip()
+            if tresc.lower() == 'cancel':
                 return None
             matches = [t for t in tasks if t.title.strip().lower() == tresc.lower()]
             if not matches:
-                print("Nie znaleziono zadania o takiej treści!")
+                print('No task found with that content!')
                 continue
             if len(matches) > 1:
-                print("Kilka zadań ma taką samą treść — zmień nazwę jednego z nich.")
+                print('Several tasks have the same content — please rename one of them.')
                 continue
             return matches[0]
 
     def _pick_topic(self, session, subject):
-        """Wybiera istniejący temat albo pozwala utworzyć nowy od razu."""
+        """Select an existing topic or create a new one immediately."""
         topics = self.topics._get_all(session, subject)
         if topics:
             for t in topics:
                 print(f"- {t.nazwa}")
-            nazwa = input("\nPodaj nazwę tematu (istniejącego albo nowego): ").strip().lower()
+            nazwa = input('\nEnter the topic name (existing or new): ').strip().lower()
         else:
-            print("Ten przedmiot nie ma jeszcze żadnych tematów — utwórzmy pierwszy.")
-            nazwa = input("Podaj nazwę nowego tematu: ").strip().lower()
+            print("This subject has no topics yet — let's create the first one.")
+            nazwa = input('Enter the new topic name: ').strip().lower()
 
         if not nazwa:
-            print("Nazwa tematu nie może być pusta!")
+            print('Topic name cannot be empty!')
             return None
 
         topic = next((t for t in topics if t.nazwa == nazwa), None)
         if topic:
             return topic
 
-        difficulty = ask_choice("Poziom trudności nowego tematu", DIFFICULTY_OPTIONS)
+        difficulty = ask_choice('Difficulty level of the new topic', DIFFICULTY_OPTIONS)
         new_topic = TopicModel(nazwa=nazwa, subject_uid=subject.subject_uid, difficulty=difficulty)
         session.add(new_topic)
         session.commit()
@@ -456,7 +456,7 @@ class TaskService:
 
     def add(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Do którego przedmiotu dodać zadanie?")
+        subject = self.subjects._select(session, 'To which subject do you want to add the task?')
         if not subject:
             session.close()
             return
@@ -467,136 +467,136 @@ class TaskService:
             return
 
         while True:
-            title = input("Podaj treść zadania: ").strip()
+            title = input('Enter the task content: ').strip()
             if not title:
-                print("Treść nie może być pusta!")
+                print('Content cannot be empty!')
                 continue
             if self._title_exists(session, topic, title):
-                print("Zadanie o takiej treści już istnieje w tym temacie!")
+                print('A task with this content already exists in this topic!')
                 continue
             break
 
-        deadline_date = ask_date("Termin wykonania")
+        deadline_date = ask_date('Due date')
         deadline = datetime.combine(deadline_date, datetime.min.time()) if deadline_date else None
-        priority = ask_choice("Priorytet", PRIORITY_OPTIONS) or Priority.MEDIUM.value
+        priority = ask_choice('Priority', PRIORITY_OPTIONS) or Priority.MEDIUM.value
 
         new_task = TaskModel(title=title, topic_uid=topic.topic_uid, deadline=deadline, priority=priority)
         session.add(new_task)
         session.commit()
-        print("Dodano zadanie!")
+        print('Task added!')
         session.close()
 
     def edit(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie edytujesz zadanie?")
+        subject = self.subjects._select(session, 'In which subject are you editing the task?')
         if not subject:
             session.close()
             return
 
-        topic = self.topics._select(session, subject, "W którym temacie?")
+        topic = self.topics._select(session, subject, 'In which topic?')
         if not topic:
             session.close()
             return
 
-        task = self._select_task(session, topic, "Które zadanie edytujesz?")
+        task = self._select_task(session, topic, 'Which task are you editing?')
         if not task:
             session.close()
             return
 
         while True:
-            nowa_tresc = input(f"Nowa treść (enter aby zostawić '{task.title}'): ").strip()
+            nowa_tresc = input("New content (press enter to keep '{0}'): ".format(task.title)).strip()
             if not nowa_tresc or not self._title_exists(session, topic, nowa_tresc, task):
                 break
-            print("Zadanie o takiej treści już istnieje w tym temacie!")
+            print('A task with this content already exists in this topic!')
         if nowa_tresc:
             task.title = nowa_tresc
 
-        nowy_termin = ask_date("Nowy termin")
+        nowy_termin = ask_date('New deadline')
         if nowy_termin:
             task.deadline = datetime.combine(nowy_termin, datetime.min.time())
 
-        nowy_priorytet = ask_choice("Nowy priorytet", PRIORITY_OPTIONS)
+        nowy_priorytet = ask_choice('New priority', PRIORITY_OPTIONS)
         if nowy_priorytet:
             task.priority = nowy_priorytet
 
         session.commit()
-        print("Zaktualizowano zadanie!")
+        print('Task updated!')
         session.close()
 
     def delete(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie usunąć zadanie?")
+        subject = self.subjects._select(session, 'In which subject do you want to delete the task?')
         if not subject:
             session.close()
             return
 
-        topic = self.topics._select(session, subject, "W którym temacie?")
+        topic = self.topics._select(session, subject, 'In which topic?')
         if not topic:
             session.close()
             return
 
-        task = self._select_task(session, topic, "Które zadanie usunąć?")
+        task = self._select_task(session, topic, 'Which task do you want to delete?')
         if not task:
             session.close()
             return
 
-        if input(f"Na pewno usunąć '{task.title}'? (tak/nie): ").strip().lower() != "tak":
-            print("Anulowano.")
+        if input("Are you sure you want to delete '{0}'? (yes/no): ".format(task.title)).strip().lower() != 'yes':
+            print('Cancelled.')
             session.close()
             return
 
         session.delete(task)
         session.commit()
-        print("Usunięto zadanie.")
+        print('Task deleted.')
         session.close()
 
     def complete(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie?")
+        subject = self.subjects._select(session, 'In which subject?')
         if not subject:
             session.close()
             return
 
-        topic = self.topics._select(session, subject, "W którym temacie?")
+        topic = self.topics._select(session, subject, 'In which topic?')
         if not topic:
             session.close()
             return
 
-        task = self._select_task(session, topic, "Które zadanie wykonałeś?")
+        task = self._select_task(session, topic, 'Which task did you complete?')
         if not task:
             session.close()
             return
 
         if task.is_done:
-            print("Zadanie już zostało wykonane!")
+            print('The task has already been completed!')
         else:
             task.is_done = True
             session.commit()
-            print("Zmieniono status zadania!")
+            print('Task status changed!')
         session.close()
 
     def show(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Zadania którego przedmiotu pokazać?")
+        subject = self.subjects._select(session, 'Show tasks for which subject?')
         if not subject:
             session.close()
             return
 
         topics = self.topics._get_all(session, subject)
         if not topics:
-            print("Brak tematów (a więc i zadań).")
+            print('No topics (and therefore no tasks).')
             session.close()
             return
 
         for topic in topics:
-            print(f"\nTemat: {topic.nazwa}")
+            print('\nTopic: {0}'.format(topic.nazwa))
             tasks = self._get_all(session, topic)
             if not tasks:
-                print("  (brak zadań)")
+                print('  (no tasks)')
             for t in tasks:
-                status = "Wykonane" if t.is_done else " "
-                deadline = f", termin: {t.deadline.date()}" if t.deadline else ""
-                print(f"  [{status}] {t.title} (priorytet: {t.priority.value}{deadline})")
+                status = 'Completed' if t.is_done else " "
+                deadline = ', due date: {0}'.format(t.deadline.date()) if t.deadline else ""
+                print('  [{0}] {1} (priority: {2}{3})'.format(status, t.title, t.priority.value, deadline))
 
         session.close()
 
@@ -618,13 +618,13 @@ class StudySessionService:
 
     def add(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Dla którego przedmiotu zapisać sesję nauki?")
+        subject = self.subjects._select(session, 'For which subject do you want to save the study session?')
         if not subject:
             session.close()
             return
 
-        duration = ask_int("Ile minut trwała sesja?", allow_empty=False, min_value=1)
-        notes = input("Notatki (opcjonalnie): ").strip() or None
+        duration = ask_int('How many minutes did the session last?', allow_empty=False, min_value=1)
+        notes = input('Notes (optional): ').strip() or None
 
         new_session = StudySessionModel(
             subject_uid=subject.subject_uid,
@@ -633,19 +633,19 @@ class StudySessionService:
         )
         session.add(new_session)
         session.commit()
-        print("Zapisano sesję nauki!")
+        print('Study session saved!')
         session.close()
 
     def show(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Sesje którego przedmiotu pokazać?")
+        subject = self.subjects._select(session, 'Show sessions for which subject?')
         if not subject:
             session.close()
             return
 
         sessions = self._get_all(session, subject)
         if not sessions:
-            print("Brak sesji nauki.")
+            print('No study sessions.')
         for s in sessions:
             notatka = f" — {s.notes}" if s.notes else ""
             print(f"- {s.started_at.strftime('%Y-%m-%d %H:%M')}, {s.duration_minutes} min{notatka}")
@@ -653,14 +653,14 @@ class StudySessionService:
 
     def edit(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie edytujesz sesję?")
+        subject = self.subjects._select(session, 'In which subject are you editing the session?')
         if not subject:
             session.close()
             return
 
         sessions = self._get_all(session, subject)
         if not sessions:
-            print("Brak sesji nauki.")
+            print('No study sessions.')
             session.close()
             return
 
@@ -668,60 +668,60 @@ class StudySessionService:
             notatka = f" — {s.notes}" if s.notes else ""
             print(f"{i}. {s.started_at.strftime('%Y-%m-%d %H:%M')}, {s.duration_minutes} min{notatka}")
 
-        numer = ask_int("Numer sesji do edycji", allow_empty=False, min_value=1)
+        numer = ask_int('Session number to edit', allow_empty=False, min_value=1)
         if numer is None or numer > len(sessions):
-            print("Niepoprawny numer!")
+            print('Invalid number!')
             session.close()
             return
 
         target = sessions[numer - 1]
-        nowy_czas = ask_int("Nowy czas trwania (minuty)", min_value=1)
+        nowy_czas = ask_int('New duration (minutes)', min_value=1)
         if nowy_czas is not None:
             target.duration_minutes = nowy_czas
 
-        nowe_notatki = input("Nowe notatki (enter aby zostawić bez zmian): ").strip()
+        nowe_notatki = input('New notes (press enter to keep unchanged): ').strip()
         if nowe_notatki:
             target.notes = nowe_notatki
 
         session.commit()
-        print("Zaktualizowano sesję!")
+        print('Session updated!')
         session.close()
 
     def delete(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie usunąć sesję?")
+        subject = self.subjects._select(session, 'In which subject do you want to delete the session?')
         if not subject:
             session.close()
             return
 
         sessions = self._get_all(session, subject)
         if not sessions:
-            print("Brak sesji nauki.")
+            print('No study sessions.')
             session.close()
             return
 
         for i, s in enumerate(sessions, start=1):
             print(f"{i}. {s.started_at.strftime('%Y-%m-%d %H:%M')}, {s.duration_minutes} min")
 
-        numer = ask_int("Numer sesji do usunięcia", allow_empty=False, min_value=1)
+        numer = ask_int('Session number to delete', allow_empty=False, min_value=1)
         if numer is None or numer > len(sessions):
-            print("Niepoprawny numer!")
+            print('Invalid number!')
             session.close()
             return
 
         target = sessions[numer - 1]
-        if input("Na pewno usunąć? (tak/nie): ").strip().lower() != "tak":
-            print("Anulowano.")
+        if input('Are you sure you want to delete? (yes/no): ').strip().lower() != 'yes':
+            print('Cancelled.')
             session.close()
             return
 
         session.delete(target)
         session.commit()
-        print("Usunięto sesję.")
+        print('Session deleted.')
         session.close()
 
 
-# ---------- Wyniki egzaminów ----------
+# ---------- Exam results ----------
 
 class ExamResultService:
     def __init__(self, user_uid):
@@ -738,98 +738,98 @@ class ExamResultService:
 
     def add(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Dla którego przedmiotu zapisać wynik?")
+        subject = self.subjects._select(session, 'For which subject do you want to save the score?')
         if not subject:
             session.close()
             return
 
-        exam_date = ask_date("Data egzaminu", allow_empty=False)
-        score = ask_float("Wynik w %", allow_empty=False, min_value=0, max_value=100)
+        exam_date = ask_date('Exam date', allow_empty=False)
+        score = ask_float('Score in %', allow_empty=False, min_value=0, max_value=100)
 
         new_result = ExamResultModel(subject_uid=subject.subject_uid, exam_date=exam_date, score_percent=score)
         session.add(new_result)
         session.commit()
-        print("Zapisano wynik egzaminu!")
+        print('Exam score saved!')
         session.close()
 
     def show(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "Wyniki którego przedmiotu pokazać?")
+        subject = self.subjects._select(session, 'Show scores for which subject?')
         if not subject:
             session.close()
             return
 
         results = self._get_all(session, subject)
         if not results:
-            print("Brak wyników.")
+            print('No scores.')
         for r in results:
             print(f"- {r.exam_date}: {r.score_percent}%")
         session.close()
 
     def edit(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie edytujesz wynik?")
+        subject = self.subjects._select(session, 'In which subject are you editing the score?')
         if not subject:
             session.close()
             return
 
         results = self._get_all(session, subject)
         if not results:
-            print("Brak wyników.")
+            print('No scores.')
             session.close()
             return
 
         for i, r in enumerate(results, start=1):
             print(f"{i}. {r.exam_date}: {r.score_percent}%")
 
-        numer = ask_int("Numer wyniku do edycji", allow_empty=False, min_value=1)
+        numer = ask_int('Score number to edit', allow_empty=False, min_value=1)
         if numer is None or numer > len(results):
-            print("Niepoprawny numer!")
+            print('Invalid number!')
             session.close()
             return
 
         target = results[numer - 1]
-        nowa_data = ask_date("Nowa data egzaminu")
+        nowa_data = ask_date('New exam date')
         if nowa_data:
             target.exam_date = nowa_data
 
-        nowy_wynik = ask_float("Nowy wynik w %", min_value=0, max_value=100)
+        nowy_wynik = ask_float('New score in %', min_value=0, max_value=100)
         if nowy_wynik is not None:
             target.score_percent = nowy_wynik
 
         session.commit()
-        print("Zaktualizowano wynik!")
+        print('Score updated!')
         session.close()
 
     def delete(self):
         session = SessionLocal()
-        subject = self.subjects._select(session, "W którym przedmiocie usunąć wynik?")
+        subject = self.subjects._select(session, 'In which subject do you want to delete the score?')
         if not subject:
             session.close()
             return
 
         results = self._get_all(session, subject)
         if not results:
-            print("Brak wyników.")
+            print('No scores.')
             session.close()
             return
 
         for i, r in enumerate(results, start=1):
             print(f"{i}. {r.exam_date}: {r.score_percent}%")
 
-        numer = ask_int("Numer wyniku do usunięcia", allow_empty=False, min_value=1)
+        numer = ask_int('Result number to delete', allow_empty=False, min_value=1)
         if numer is None or numer > len(results):
-            print("Niepoprawny numer!")
+            print('Invalid number!')
             session.close()
             return
 
         target = results[numer - 1]
-        if input("Na pewno usunąć? (tak/nie): ").strip().lower() != "tak":
-            print("Anulowano.")
+        if input('Are you sure you want to delete? (yes/no): ').strip().lower() != 'yes':
+            print('Cancelled.')
             session.close()
             return
 
         session.delete(target)
         session.commit()
-        print("Usunięto wynik.")
+        print('Result deleted.')
         session.close()

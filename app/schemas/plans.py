@@ -1,8 +1,9 @@
+from app.core.i18n import tr
 from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PlanDayRead(BaseModel):
@@ -37,10 +38,20 @@ class PlanDayUpdate(BaseModel):
     is_done: bool | None = None
     scheduled_date: date | None = None
     scheduled_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-    duration_minutes: int | None = Field(default=None, ge=10, le=240)
+    duration_minutes: int | None = Field(default=None, ge=5, le=240)
     title: str | None = Field(default=None, min_length=1, max_length=160)
     objective: str | None = Field(default=None, min_length=1, max_length=1000)
     activities: list[str] | None = Field(default=None, min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_changes(self):
+        for name in self.model_fields_set - {"scheduled_time"}:
+            value = getattr(self, name)
+            if value is None or isinstance(value, str) and not value.strip():
+                raise ValueError(tr('Field {0} cannot be empty.', name))
+        if self.activities is not None and any(not item.strip() for item in self.activities):
+            raise ValueError(tr('Activity cannot be empty.'))
+        return self
 
 
 class PlanShift(BaseModel):

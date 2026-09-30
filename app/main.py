@@ -8,6 +8,7 @@ from app.core.traffic import snapshot
 from app.db.database import SessionLocal
 from app.core.logging import configure_logging
 from app.core.middleware import log_requests
+from app.core.i18n import localize_request
 from app.routers import ai, auth, exam_results, exports, plans, study_sessions, subjects, tasks, topics, users
 
 configure_logging(settings.log_level)
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.middleware("http")(log_requests)
+app.middleware("http")(localize_request)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(subjects.router)

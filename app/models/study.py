@@ -20,6 +20,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Warsaw", server_default="Europe/Warsaw")
+    language: Mapped[str] = mapped_column(String(2), default="en", server_default="en")
     preferred_minutes: Mapped[int] = mapped_column(Integer, default=45, server_default="45")
     preferred_study_time: Mapped[str] = mapped_column(String(5), default="18:00", server_default="18:00")
     task_shortcut: Mapped[str] = mapped_column(String(30), default="", server_default="")
@@ -43,6 +44,7 @@ class Subject(Base):
     __table_args__ = (
         Index("uq_subject_user_name", "user_uid", func.lower(func.trim(name)), unique=True),
         Index("ix_subject_user_archived", "user_uid", "archived_at"),
+        Index("ix_subject_name_trgm", "nazwa", postgresql_using="gin", postgresql_ops={"nazwa": "gin_trgm_ops"}),
     )
     user: Mapped["User"] = relationship(back_populates="subjects")
     topics: Mapped[list["Topic"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
@@ -74,12 +76,17 @@ class Task(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     topic: Mapped["Topic"] = relationship(back_populates="tasks")
     study_sessions: Mapped[list["StudySession"]] = relationship(back_populates="task")
-    __table_args__ = (Index("ix_task_topic_deadline", "topic_uid", "deadline"),)
+    __table_args__ = (
+        Index("ix_task_topic_deadline", "topic_uid", "deadline"),
+        Index("ix_task_topic_done_deadline", "topic_uid", "is_done", "deadline"),
+        Index("ix_task_topic_priority", "topic_uid", "priority"),
+        Index("ix_task_title_trgm", "title", postgresql_using="gin", postgresql_ops={"title": "gin_trgm_ops"}),
+    )
 
 class StudySession(Base):
     __tablename__ = "study_sessions"
     study_uid: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    title: Mapped[str] = mapped_column(String(160), default="Sesja nauki")
+    title: Mapped[str] = mapped_column(String(160), default="Study session")
     subject_uid: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.subject_uid", ondelete="CASCADE"))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -88,6 +95,7 @@ class StudySession(Base):
     task_uid: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.task_uid", ondelete="SET NULL"), nullable=True)
     __table_args__ = (
         CheckConstraint("duration_minutes >= 0", name="duration_minutes_positive"),
+        Index("ix_study_session_subject_started", "subject_uid", "started_at"),
     )
     subject: Mapped["Subject"] = relationship(back_populates="study_sessions")
     topic: Mapped["Topic | None"] = relationship(back_populates="study_sessions")
@@ -101,6 +109,7 @@ class ExamResult(Base):
     score_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     __table_args__ = (
         CheckConstraint("score_percent BETWEEN 0 AND 100", name="score_percent_range"),
+        Index("ix_exam_result_subject_date", "subject_uid", "exam_date"),
     )
     subject: Mapped["Subject"] = relationship(back_populates="exam_results")
 
@@ -118,6 +127,7 @@ class AiMaterial(Base):
     __table_args__ = (
         CheckConstraint("material_type IN ('notes', 'plan')", name="ai_material_type_valid"),
         Index("ix_ai_material_user_created", "user_uid", "created_at"),
+        Index("ix_ai_material_task", "task_uid"),
     )
 
 

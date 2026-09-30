@@ -1,3 +1,4 @@
+from app.core.i18n import tr
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
@@ -31,7 +32,7 @@ def get_plan(plan_uid: UUID, db: Session = Depends(get_db), user: models.User = 
 def duplicate_plan(plan_uid: UUID, payload: PlanShift, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     source = plan_service.get_plan(db, plan_uid, user.user_uid)
     plan = models.StudyPlan(user_uid=user.user_uid, topic_uid=source.topic_uid,
-                            title=f"{source.title} — kopia"[:160], overview=source.overview,
+                            title=tr('{0} — copy', source.title)[:160], overview=source.overview,
                             success_criteria=source.success_criteria, start_date=payload.start_date,
                             minutes_per_day=source.minutes_per_day)
     db.add(plan)
@@ -64,7 +65,7 @@ def update_day(plan_uid: UUID, day_uid: UUID, payload: PlanDayUpdate,
                db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     plan = plan_service.get_plan(db, plan_uid, user.user_uid)
     day = next((item for item in plan.days if item.day_uid == day_uid), None)
-    if day is None: raise HTTPException(status_code=404, detail="Nie znaleziono dnia planu.")
+    if day is None: raise HTTPException(status_code=404, detail=tr('Plan day not found.'))
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(day, key, value)
     plan_service.update_calendar_task(db, day, user)
@@ -79,12 +80,13 @@ async def regenerate_day(plan_uid: UUID, day_uid: UUID, payload: PlanDayRegenera
                          db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     plan = plan_service.get_plan(db, plan_uid, user.user_uid)
     day = next((item for item in plan.days if item.day_uid == day_uid), None)
-    if day is None: raise HTTPException(status_code=404, detail="Nie znaleziono dnia planu.")
+    if day is None: raise HTTPException(status_code=404, detail=tr('Plan day not found.'))
     check_limit("ai", str(user.user_uid), settings.ai_rate_limit_per_day, 86400)
     topic = db.get(models.Topic, plan.topic_uid)
     subject = db.get(models.Subject, topic.subject_uid)
     result = await ai_service.regenerate_plan_day(subject.name, topic.name, day.day_number,
-                                                   plan.minutes_per_day, day.objective, payload.custom_goal)
+                                                   plan.minutes_per_day, day.objective, payload.custom_goal,
+                                                   "Polish" if user.language == "pl" else "English")
     day.title, day.objective, day.activities, day.duration_minutes = result.title, result.objective, result.activities, result.duration_minutes
     plan_service.update_calendar_task(db, day, user)
     plan_service.sync_material(db, plan)
@@ -131,5 +133,5 @@ def answer_review(review_uid: UUID, payload: ReviewAnswer, db: Session = Depends
                   user: models.User = Depends(get_current_user)):
     review = db.scalar(select(models.ReviewSchedule).where(models.ReviewSchedule.review_uid == review_uid,
                                                              models.ReviewSchedule.user_uid == user.user_uid))
-    if review is None: raise HTTPException(status_code=404, detail="Nie znaleziono powtórki.")
+    if review is None: raise HTTPException(status_code=404, detail=tr('Review not found.'))
     return plan_service.answer_review(db, review, user, payload.rating)

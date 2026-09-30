@@ -1,0 +1,22 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET_KEY: ci-test-secret-not-for-deployment-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend regression tests (isolated PostgreSQL)
+        run: docker compose --profile test run --rm --build tests
+      - name: Archived CLI tests
+        run: docker compose --profile test run --rm -v "$PWD/legacy_cli:/app/legacy_cli:ro" --entrypoint python tests -m pytest legacy_cli/test_functions.py -q
+      - name: Build frontend
+        run: docker compose build frontend
+      - name: Frontend unit tests
+        run: docker run --rm -v "$PWD/frontend:/app:ro" -w /app node:22-alpine sh -c 'node --experimental-strip-types --test tests/*.test.mjs'
+      - name: Stop test services
+        if: always()
+        run: docker compose --profile test down

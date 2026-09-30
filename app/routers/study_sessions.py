@@ -10,6 +10,10 @@ from app.services import study
 
 router = APIRouter(prefix="/study-sessions", tags=["study sessions"])
 
+@router.get("/summary")
+def summary(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return study.study_session_summary(db, user)
+
 @router.post("", response_model=StudySessionRead, status_code=201)
 def create(payload: StudySessionCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     return study.create_study_session(db, payload, user.user_uid)

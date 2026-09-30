@@ -7,7 +7,7 @@ import pytest
 import httpx
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,17 +17,30 @@ from app.core.config import Settings
 from app.main import app
 from app.schemas.ai import GeneratedNotes, GeneratedStudyPlan, T3achProposal
 from app.core.config import settings
+from app.core.traffic import _events
 from app.services import auth as auth_service
 from app.services import ai as ai_service
 from app.services import plans as plan_service
-from app.routers.ai import _exam_date_from_message, _explicit_plan_preferences, _weekday_availability
+from app.routers.ai import _exam_date_from_message, _explicit_plan_preferences, _mentioned_weekdays, _weekday_availability, _plan_start_from_message
+
+
+def future_wednesday():
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Warsaw")).date()
+    return today + timedelta(days=7 + (2 - today.weekday()) % 7)
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
+    _events.clear()
+    async def explain(message, history, previous, preview, language):
+        plan = preview.get("plan", preview)
+        return f"Zmiana: {message}. {len(plan['steps'])} dostępnych dni i łącznie {sum(step['duration_minutes'] for step in plan['steps'])} minut."
+    monkeypatch.setattr(ai_service, "explain_t3ach_result", explain)
     test_database_url = os.getenv("TEST_DATABASE_URL")
     if test_database_url:
         engine = create_engine(test_database_url)
+        with engine.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     else:
         engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     TestingSession = sessionmaker(bind=engine, expire_on_commit=False)
@@ -38,6 +51,7 @@ def client():
             yield db
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as api_client:
+        api_client.headers["Accept-Language"] = "pl"
         yield api_client
     app.dependency_overrides.clear()
     Base.metadata.drop_all(engine)
@@ -102,6 +116,51 @@ def test_login_and_current_user(client):
     assert client.post("/auth/login", json={"username": "student", "password": "wrong-password"}).status_code == 401
 
 
+def test_language_preference_and_localized_errors(client):
+    english = {"Accept-Language": "en"}
+    registered = client.post("/auth/register", headers=english,
+                             json={"username": "language-user", "password": "secret123"})
+    assert registered.status_code == 201
+    assert registered.json()["language"] == "en"
+    token = client.post("/auth/login", headers=english,
+                        json={"username": "language-user", "password": "secret123"}).json()["access_token"]
+    authorization = {"Authorization": f"Bearer {token}"}
+    changed = client.patch("/users/me", headers={**authorization, **english}, json={"language": "pl"})
+    assert changed.status_code == 200
+    assert changed.json()["language"] == "pl"
+    assert client.get("/users/me", headers=authorization).json()["language"] == "pl"
+    invalid = client.patch("/users/me", headers={**authorization, **english}, json={"language": "de"})
+    assert invalid.status_code == 422
+    assert client.post("/auth/login", headers=english, json={"username": "language-user", "password": "wrong"}).json()["detail"] == "Invalid username or password."
+    polish_error = client.post("/auth/login", json={"username": "language-user", "password": "wrong"})
+    assert polish_error.json()["detail"] == "Nieprawidłowa nazwa użytkownika lub hasło."
+    assert polish_error.headers["content-language"] == "pl"
+
+
+def test_t3ach_voice_uses_saved_account_language(client, monkeypatch):
+    headers, _ = auth_headers(client, "voice-language")
+    spoken_languages = []
+
+    async def fake_speech(text, language):
+        spoken_languages.append(language)
+        return b"RIFFtest"
+
+    monkeypatch.setattr(ai_service, "generate_t3ach_speech", fake_speech)
+    assert client.post("/ai/t3ach/speech", headers=headers, json={"text": "Hello"}).status_code == 200
+    assert client.patch("/users/me", headers=headers, json={"language": "pl"}).status_code == 200
+    assert client.post("/ai/t3ach/speech", headers=headers, json={"text": "Cześć"}).status_code == 200
+    assert spoken_languages == ["English", "Polish"]
+
+
+def test_english_plan_instructions_keep_dates_and_availability():
+    today = date(2026, 9, 30)
+    assert _plan_start_from_message("Start tomorrow", today) == date(2026, 10, 1)
+    assert _plan_start_from_message("Begin day after tomorrow", today) == date(2026, 10, 2)
+    assert _exam_date_from_message("The exam is in 6 days", today) == date(2026, 10, 6)
+    assert _explicit_plan_preferences("Plan for 5 days, 40 minutes per day") == (5, 40)
+    assert _weekday_availability("I cannot study on Saturday and Sunday")[0] == {5, 6}
+
+
 def test_login_lockout_expires_and_success_clears_failures(client, monkeypatch):
     auth_headers(client, "lockout-student")
     wrong = {"username": "lockout-student", "password": "wrong-password"}
@@ -152,7 +211,7 @@ def test_subject_names_are_unique_per_user(client):
 
     duplicate = client.post("/subjects", headers=headers, json={"name": "  matematyka  "})
     assert duplicate.status_code == 409
-    assert duplicate.json()["detail"] == "Subject with this name already exists"
+    assert duplicate.json()["detail"] == "Przedmiot o tej nazwie już istnieje."
 
     second = create_subject(client, headers, "Fizyka")
     renamed = client.patch(
@@ -180,6 +239,48 @@ def test_blank_topic_and_task_names_are_rejected(client):
     assert task["title"] == "Powtórka"
     assert client.patch(f"/topics/{topic['topic_uid']}", headers=headers, json={"name": "   "}).status_code == 422
     assert client.patch(f"/tasks/{task['task_uid']}", headers=headers, json={"title": "   "}).status_code == 422
+
+
+def test_bulk_complete_is_atomic_and_checks_ownership(client):
+    first_headers, _ = auth_headers(client, "bulk-owner")
+    other_headers, _ = auth_headers(client, "bulk-other")
+    subject = create_subject(client, first_headers)
+    topic = client.post("/topics", headers=first_headers, json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
+    first = client.post("/tasks", headers=first_headers, json={"title": "Pierwsze", "topic_uid": topic["topic_uid"]}).json()
+    second = client.post("/tasks", headers=first_headers, json={"title": "Drugie", "topic_uid": topic["topic_uid"]}).json()
+    foreign_subject = create_subject(client, other_headers, "Fizyka")
+    foreign_topic = client.post("/topics", headers=other_headers, json={"name": "Ruch", "subject_uid": foreign_subject["subject_uid"]}).json()
+    foreign = client.post("/tasks", headers=other_headers, json={"title": "Obce", "topic_uid": foreign_topic["topic_uid"]}).json()
+    rejected = client.post("/tasks/bulk-complete", headers=first_headers, json={"task_uids": [first["task_uid"], foreign["task_uid"]]})
+    assert rejected.status_code == 404
+    assert client.get(f"/tasks/{first['task_uid']}", headers=first_headers).json()["is_done"] is False
+    accepted = client.post("/tasks/bulk-complete", headers=first_headers, json={"task_uids": [first["task_uid"], second["task_uid"]]})
+    assert accepted.status_code == 200
+    assert accepted.json() == {"updated": 2}
+    assert client.get(f"/tasks/{first['task_uid']}", headers=first_headers).json()["is_done"] is True
+    assert client.get(f"/tasks/{second['task_uid']}", headers=first_headers).json()["is_done"] is True
+
+
+def test_topic_move_reports_name_conflict(client):
+    headers, _ = auth_headers(client, "move-topic")
+    first_subject = create_subject(client, headers, "Fizyka")
+    second_subject = create_subject(client, headers, "Matematyka")
+    first = client.post("/topics", headers=headers, json={"name": "Wzory", "subject_uid": first_subject["subject_uid"]}).json()
+    client.post("/topics", headers=headers, json={"name": "Wzory", "subject_uid": second_subject["subject_uid"]})
+    response = client.patch(f"/topics/{first['topic_uid']}", headers=headers, json={"subject_uid": second_subject["subject_uid"]})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Temat o tej nazwie już istnieje w tym przedmiocie."
+    assert client.get(f"/topics/{first['topic_uid']}", headers=headers).json()["subject_uid"] == first_subject["subject_uid"]
+
+
+def test_session_summary_matches_local_day(client):
+    headers, _ = auth_headers(client, "session-summary")
+    subject = create_subject(client, headers)
+    result = client.post("/study-sessions", headers=headers, json={"subject_uid": subject["subject_uid"], "duration_minutes": 35})
+    assert result.status_code == 201
+    summary = client.get("/study-sessions/summary", headers=headers)
+    assert summary.status_code == 200
+    assert summary.json() == {"today_minutes": 35, "week_minutes": 35, "streak": 1}
 
 
 def test_jwt_secret_must_be_unique_and_long():
@@ -718,7 +819,7 @@ def test_t3ach_prompt_revision_changes_answer_preview_and_saved_plan(client, mon
     assert proposal["days"] == 5
     assert len(proposal["preview"]["steps"]) == 5
     assert proposal["preview"]["steps"][0]["title"] == "Ćwiczenia praktyczne"
-    assert "Poprawiłem plan zgodnie z prośbą" in proposal["reply"]
+    assert "5 dostępnych dni i łącznie 200 minut" in proposal["reply"]
     assert "Plan wstępny" in previous_context[1]["previous_material"]
     assert "pięć dni" in goals[-1]
     assert client.post("/ai/t3ach/execute", headers=headers,
@@ -730,7 +831,9 @@ def test_t3ach_prompt_revision_changes_answer_preview_and_saved_plan(client, mon
 
 def test_t3ach_revision_excludes_weekend_and_carries_activities_into_calendar(client, monkeypatch):
     headers, _ = auth_headers(client, "t3ach-no-weekend")
-    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: date(2026, 9, 30))
+    start = future_wednesday()
+    expected_dates = [(start + timedelta(days=offset)).isoformat() for offset in (0, 1, 2, 5)]
+    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: start)
 
     async def fake_proposal(*args, **kwargs):
         return T3achProposal(reply="Plan z zachowaniem pełnego materiału.", intent="study_plan",
@@ -756,18 +859,18 @@ def test_t3ach_revision_excludes_weekend_and_carries_activities_into_calendar(cl
     assert proposal["excluded_weekdays"] == [5, 6]
     assert proposal["requested_plan_days"] == 6
     steps = proposal["preview"]["steps"]
-    assert [step["scheduled_date"] for step in steps] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert [step["scheduled_date"] for step in steps] == expected_dates
     assert sum(step["duration_minutes"] for step in steps) == 180
     assert any("Stare ćwiczenie 4" in step["activities"] for step in steps)
     assert any("Stare ćwiczenie 5" in step["activities"] for step in steps)
     saved = client.post("/ai/t3ach/execute", headers=headers, json={"proposal_uid": proposal["proposal_uid"]})
     assert saved.status_code == 200
     plan = client.get("/plans", headers=headers).json()[0]
-    assert [day["scheduled_date"] for day in plan["days"]] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert [day["scheduled_date"] for day in plan["days"]] == expected_dates
     assert sum(day["duration_minutes"] for day in plan["days"]) == 180
-    duplicate = client.post(f"/plans/{plan['plan_uid']}/duplicate", headers=headers, json={"start_date": "2026-10-07"})
+    duplicate = client.post(f"/plans/{plan['plan_uid']}/duplicate", headers=headers, json={"start_date": (start + timedelta(days=7)).isoformat()})
     assert duplicate.status_code == 200
-    assert [day["scheduled_date"] for day in duplicate.json()["days"]] == ["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-12"]
+    assert [day["scheduled_date"] for day in duplicate.json()["days"]] == [(start + timedelta(days=7 + offset)).isoformat() for offset in (0, 1, 2, 5)]
 
 
 def test_direct_plan_generator_respects_unavailable_weekdays_in_goal(client, monkeypatch):
@@ -775,10 +878,12 @@ def test_direct_plan_generator_respects_unavailable_weekdays_in_goal(client, mon
     subject = create_subject(client, headers)
     topic = client.post("/topics", headers=headers,
                         json={"name": "Algebra", "subject_uid": subject["subject_uid"]}).json()
-    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: date(2026, 9, 30))
+    start = future_wednesday()
+    expected_dates = tuple(start + timedelta(days=offset) for offset in (0, 1, 2, 5))
+    monkeypatch.setattr(plan_service, "start_date_for", lambda *args: start)
 
     async def fake_plan(*args, **kwargs):
-        assert kwargs["scheduled_dates"] == (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5))
+        assert kwargs["scheduled_dates"] == expected_dates
         return GeneratedStudyPlan(task_title="Nauka algebry", title="Plan", overview="Ćwiczenia", steps=[
             {"day": day, "title": f"Etap {day}", "objective": "Ćwicz", "activities": ["Rozwiąż zadania"], "duration_minutes": 30}
             for day in range(1, args[4] + 1)
@@ -788,13 +893,64 @@ def test_direct_plan_generator_respects_unavailable_weekdays_in_goal(client, mon
     response = client.post(f"/ai/topics/{topic['topic_uid']}/plan", headers=headers,
                            json={"days": 6, "minutes_per_day": 30, "custom_goal": "nie moge sobota i niedziela"})
     assert response.status_code == 200
-    assert [step["scheduled_date"] for step in response.json()["steps"]] == ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"]
+    assert [step["scheduled_date"] for step in response.json()["steps"]] == [day.isoformat() for day in expected_dates]
     assert [step["duration_minutes"] for step in response.json()["steps"]] == [45, 45, 45, 45]
+
+
+def test_t3ach_tomorrow_survives_clarification_revision_and_save(client, monkeypatch):
+    headers, _ = auth_headers(client, "t3ach-tomorrow")
+    contexts = []
+    tomorrow = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/Warsaw")).date() + timedelta(days=1)
+
+    async def fake_proposal(*args, **kwargs):
+        contexts.append(args[6])
+        if len(contexts) == 1:
+            return T3achProposal(reply="Jaki temat?", question="Jaki temat?", needs_clarification=True,
+                                 intent="study_plan", subject_name="Matematyka", days=3, minutes_per_day=30)
+        return T3achProposal(reply="Zacznę dziś.", intent="study_plan", subject_name="Matematyka",
+                             topic_name="Algebra", days=3, minutes_per_day=30)
+
+    async def fake_plan(*args, **kwargs):
+        assert kwargs["start_date"] == tomorrow
+        return GeneratedStudyPlan(task_title="Algebra", title="Plan", overview="Nauka",
+                                  steps=[{"day": day, "title": "Ćwiczenia", "objective": "Nauka", "activities": ["Zadania"], "duration_minutes": 30}
+                                         for day in range(1, args[4] + 1)], success_criteria=["Rozumiem"])
+
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_t3ach_proposal", fake_proposal)
+    monkeypatch.setattr("app.routers.ai.ai_service.generate_study_plan", fake_plan)
+    first = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Plan matematyki od jutra na 3 dni po 30 minut"})
+    assert first.status_code == 200
+    second = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Algebra, skup się na równaniach", "previous_proposal_uid": first.json()["proposal_uid"]})
+    assert second.status_code == 200, second.text
+    third = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Dodaj przykłady praktyczne", "previous_proposal_uid": second.json()["proposal_uid"]})
+    assert third.status_code == 200, third.text
+    proposal = third.json()
+    assert len(contexts[-1]) == 4
+    assert contexts[-1][2]["text"] == "Algebra, skup się na równaniach"
+    assert proposal["plan_start_date"] == tomorrow.isoformat()
+    assert "Zacznę dziś" not in proposal["reply"]
+    steps = proposal["preview"]["steps"]
+    assert [step["day"] for step in steps] == [1, 2, 3]
+    assert client.post("/ai/t3ach/execute", headers=headers, json={"proposal_uid": proposal["proposal_uid"]}).status_code == 200
+    saved = client.get("/plans", headers=headers).json()[0]
+    assert [day["scheduled_date"] for day in saved["days"]] == [step["scheduled_date"] for step in steps]
+
+
+def test_explicit_plan_dates_and_next_week_exam():
+    from app.routers.ai import _plan_start_from_message
+    today = date(2026, 9, 30)
+    assert _plan_start_from_message("Plan od jutra", today) == date(2026, 10, 1)
+    assert _plan_start_from_message("Zacznij pojutrze", today) == date(2026, 10, 2)
+    assert _plan_start_from_message("Plan od poniedziałku", today) == date(2026, 10, 5)
+    assert _plan_start_from_message("Sprawdzian jutro", today) is None
+    assert _exam_date_from_message("Sprawdzian za tydzień w środę", today) == date(2026, 10, 7)
+    with pytest.raises(HTTPException):
+        plan_service.build_schedule(today, 3, 30, date(2026, 9, 20))
 
 
 def test_t3ach_rejects_oversized_conversation_turn(client):
     headers, _ = auth_headers(client, "t3ach-limit")
-    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan algebry", "history": [{"role": "user", "text": "x" * 501}]})
+    response = client.post("/ai/t3ach/propose", headers=headers, json={"message": "Ułóż plan algebry", "history": [{"role": "user", "text": "x" * 4001}]})
     assert response.status_code == 422
 
 
@@ -889,6 +1045,11 @@ def test_plan_skips_weekend_and_moves_full_time_to_available_days():
     assert _weekday_availability("Nie mogę w sobotę i niedzielę") == ({5, 6}, set())
     assert _weekday_availability("nie moge sobota i niedziela") == ({5, 6}, set())
     assert _weekday_availability("W sobotę i niedzielę nie mogę, ale w poniedziałek mogę") == ({5, 6}, {0})
+    exam_and_match = "Plan z języka polskiego za tydzień w środę, nie umiem nic i w sobotę nie mogę się uczyć, bo mam mecz"
+    blocked, available = _weekday_availability(exam_and_match)
+    assert (blocked, available) == ({5}, set())
+    assert _mentioned_weekdays(exam_and_match) == {2, 5}
+    assert _weekday_availability("w sobotę i w niedzielę nie mogę") == ({5, 6}, set())
     before_weekend_exam = plan_service.build_schedule(date(2026, 9, 30), 6, 30, date(2026, 10, 4), {5, 6})
     assert before_weekend_exam.dates == (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2))
     assert before_weekend_exam.exam_review is False
@@ -958,3 +1119,120 @@ def test_user_can_set_distinct_shortcuts_for_task_and_ai(client):
     assert client.patch("/users/me", headers=headers, json={"task_shortcut": "shift+ctrl+a"}).status_code == 422
     assert client.patch("/users/me", headers=headers, json={"ai_shortcut": "Ctrl++"}).status_code == 422
     assert client.get("/users/me", headers=headers).json()["ai_shortcut"] == "Ctrl+Shift+A"
+
+
+def test_t3ach_even_distribution_preserves_days_budget_notes_and_calendar(client, monkeypatch):
+    headers, _ = auth_headers(client, 'even-distribution')
+    calls = []
+    async def propose(*args, **kwargs):
+        # Reproduce the model's erroneous interpretation of the reported 90 minutes.
+        return T3achProposal(reply='Stara odpowiedź', intent='notes', material_types=['notes', 'plan'],
+                             subject_name='Matematyka', topic_name='Funkcja liniowa', days=5 if args[7] else 7,
+                             minutes_per_day=90 if args[7] else 45, excluded_weekdays=[5,6])
+    async def notes(*args, **kwargs):
+        calls.append('notes')
+        return GeneratedNotes(task_title='Funkcja', title='Notatka', summary='Podstawy', sections=[{'heading':'Wzór','content':'y=ax+b'}], key_points=['Współczynniki'])
+    async def plan(*args, **kwargs):
+        calls.append('plan')
+        return GeneratedStudyPlan(task_title='Funkcja', title='Plan', overview='Ćwiczenia',
+            steps=[{'day':i+1,'title':f'Etap {i+1}','objective':'Nauka','activities':[f'Ćwiczenie {i+1}'], 'duration_minutes':v}
+                   for i,v in enumerate([45,60,60,90,60])],success_criteria=['Rozumiem'])
+    monkeypatch.setattr(plan_service, 'start_date_for', lambda *args: future_wednesday())
+    monkeypatch.setattr(ai_service,'generate_t3ach_proposal',propose)
+    monkeypatch.setattr(ai_service,'generate_topic_notes',notes)
+    monkeypatch.setattr(ai_service,'generate_study_plan',plan)
+    first=client.post('/ai/t3ach/propose',headers=headers,json={'message':'Plan i notatki na 7 dni po 45 minut, bez weekendu'})
+    assert first.status_code == 200, first.text
+    before=first.json()
+    latest=before
+    for message in [
+        'Dobra zmienisz mi bo obecnie w planie jest najwięcej czasu poświęcony na Czwarty dzień jest 90 min czy zrobiłbyś mi to bardziej żeby było równomiernie między innymi dniami',
+        'Nie miałeś usuwać czwartego dnia, chciałbym bardziej równomiernie żeby czwarty dzień dalej istnieje',
+    ]:
+        response=client.post('/ai/t3ach/propose',headers=headers,json={'message':message,'previous_proposal_uid':latest['proposal_uid']})
+        assert response.status_code == 200, response.text
+        latest=response.json()
+        assert latest['preview']['notes'] == before['preview']['notes']
+        assert latest['requested_plan_days'] == 7
+        assert [s['duration_minutes'] for s in latest['preview']['plan']['steps']] == [63]*5
+        assert [s['scheduled_date'] for s in latest['preview']['plan']['steps']] == [s['scheduled_date'] for s in before['preview']['plan']['steps']]
+        assert [s['activities'] for s in latest['preview']['plan']['steps']] == [s['activities'] for s in before['preview']['plan']['steps']]
+        if message.startswith('Dobra'):
+            # Simulate a draft saved by the broken version: 3 days, 450 minutes.
+            generator = app.dependency_overrides[get_db]()
+            db = next(generator)
+            row = db.get(models.AiConversation, UUID(latest['proposal_uid']))
+            broken = row.proposal.copy()
+            broken.pop('_schedule_revision_version', None)
+            broken['days'] = 3
+            broken['requested_plan_days'] = 5
+            broken['minutes_per_day'] = 90
+            broken['plan_total_minutes'] = 450
+            broken['preview'] = {**broken['preview'], 'plan': {**broken['preview']['plan'], 'steps': [
+                {**step, 'duration_minutes': 150} for step in broken['preview']['plan']['steps'][:3]]}}
+            row.proposal = broken
+            db.commit()
+            generator.close()
+    assert calls == ['notes','plan']
+    assert client.post('/ai/t3ach/execute', headers=headers,json={'proposal_uid':latest['proposal_uid']}).status_code == 200
+    saved=client.get('/plans',headers=headers).json()[0]
+    assert [d['duration_minutes'] for d in saved['days']] == [63]*5
+
+
+def test_schedule_mentions_are_not_change_requests():
+    from app.routers.ai import _revision_changes_schedule
+    message='Czwarty dzień jest 90 min, rozłóż czas równomiernie między dniami'
+    assert _explicit_plan_preferences(message) == (None,None)
+    assert _revision_changes_schedule(message) == (False,False)
+    assert _mentioned_weekdays('Czwarty dzień') == set()
+    assert _mentioned_weekdays('W czwartek') == {3}
+
+
+@pytest.mark.parametrize('kind', ['materials', 'chats'])
+def test_ai_history_bulk_delete_is_owned_and_atomic(client, kind):
+    headers, user = auth_headers(client, 'bulk-ai')
+    other_headers, other = auth_headers(client, 'bulk-ai-other')
+    generator = app.dependency_overrides[get_db]()
+    db = next(generator)
+    ids = []
+    for owner in [user, user, user, other]:
+        if kind == 'chats':
+            item = models.AiConversation(user_uid=UUID(owner['user_uid']), title='Rozmowa', user_message='Plan', assistant_message='Podgląd', proposal={})
+            db.add(item)
+            db.flush()
+            ids.append(str(item.conversation_uid))
+        else:
+            subject = models.Subject(user_uid=UUID(owner['user_uid']), name=f'Przedmiot {len(ids)}')
+            db.add(subject)
+            db.flush()
+            topic = models.Topic(subject_uid=subject.subject_uid, name='Temat')
+            db.add(topic)
+            db.flush()
+            item = models.AiMaterial(user_uid=UUID(owner['user_uid']), topic_uid=topic.topic_uid, material_type='notes', title='Notatka', content={})
+            db.add(item)
+            db.flush()
+            ids.append(str(item.material_uid))
+    db.commit()
+    generator.close()
+    endpoint = '/ai/materials' if kind == 'materials' else '/ai/t3ach/history'
+    assert client.post('/ai/history/bulk-delete', headers=headers, json={'kind':kind,'ids':[ids[0],ids[3]]}).status_code == 404
+    assert len(client.get(endpoint, headers=headers).json()) == 3
+    assert client.post('/ai/history/bulk-delete', headers=headers, json={'kind':kind,'ids':ids[:2]+ids[:1]}).status_code == 204
+    assert len(client.get(endpoint, headers=headers).json()) == 1
+    assert len(client.get(endpoint, headers=other_headers).json()) == 1
+    assert client.post('/ai/history/bulk-delete', headers=headers, json={'kind':kind,'ids':[]}).status_code == 422
+
+
+def test_result_explanation_uses_finished_preview_and_handles_provider_failure(monkeypatch):
+    before = {'steps': [{'day': 4, 'duration_minutes': 90}]}
+    after = {'steps': [{'day': 4, 'duration_minutes': 63}]}
+    async def generated(prompt, schema):
+        assert '90' in prompt and '63' in prompt and 'skróć czwarty dzień' in prompt
+        return schema(reply='Skróciłem czwarty dzień z 90 do 63 minut.')
+    monkeypatch.setattr(ai_service, '_generate_structured', generated)
+    assert asyncio.run(ai_service.explain_t3ach_result('skróć czwarty dzień', [], before, after, 'polski')) == 'Skróciłem czwarty dzień z 90 do 63 minut.'
+    async def unavailable(*args):
+        raise HTTPException(status_code=503, detail='unavailable')
+    monkeypatch.setattr(ai_service, '_generate_structured', unavailable)
+    fallback = asyncio.run(ai_service.explain_t3ach_result('skróć czwarty dzień', [], before, after, 'polski'))
+    assert '90 → 63' in fallback

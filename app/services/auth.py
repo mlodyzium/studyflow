@@ -1,3 +1,4 @@
+from app.core.i18n import tr
 from datetime import datetime, timedelta, timezone
 from math import ceil
 
@@ -25,7 +26,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
 def _locked_response(seconds: int) -> HTTPException:
     return HTTPException(
         status_code=429,
-        detail="Zbyt wiele błędnych haseł. Spróbuj ponownie później.",
+        detail=tr('Too many incorrect passwords. Try again later.'),
         headers={"Retry-After": str(max(1, seconds))},
     )
 
@@ -35,7 +36,7 @@ def login(db: Session, data: LoginRequest) -> str:
     now = _now()
     if user is None:
         count("failed_login")
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail=tr('Invalid username or password.'))
     locked_until = _as_utc(user.locked_until)
     if locked_until is not None and locked_until > now:
         count("login_locked")
@@ -54,7 +55,7 @@ def login(db: Session, data: LoginRequest) -> str:
             count("login_lock_started")
             raise _locked_response(settings.login_lock_minutes * 60)
         db.commit()
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail=tr('Invalid username or password.'))
     user.failed_login_attempts = 0
     user.failed_login_window_started_at = None
     user.locked_until = None

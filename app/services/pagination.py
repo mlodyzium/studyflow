@@ -10,9 +10,12 @@ T = TypeVar("T")
 
 
 def paginate(db: Session, query: Select, page: int, page_size: int) -> Page[T]:
-    total_query = select(func.count()).select_from(query.order_by(None).subquery())
-    total = db.scalar(total_query) or 0
     items = list(db.scalars(query.offset((page - 1) * page_size).limit(page_size)))
+    if page == 1 and len(items) < page_size:
+        total = len(items)
+    else:
+        total_query = select(func.count()).select_from(query.order_by(None).subquery())
+        total = db.scalar(total_query) or 0
 
     return Page(
         items=items,
